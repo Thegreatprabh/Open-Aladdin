@@ -1,4 +1,4 @@
-// OPEN-ALADDIN — Exact Black-Scholes-Merton engine.
+// OPEN-ATLAS — Exact Black-Scholes-Merton engine.
 // Closed-form price + 1st/2nd order Greeks (Delta, Gamma, Theta, Vega, Rho,
 // Vanna, Charm, Vomma) and a Newton/bisection implied-volatility solver.
 

@@ -1,4 +1,4 @@
-// OPEN-ALADDIN — Dealer Gamma Exposure (GEX) analytics.
+// OPEN-ATLAS — Dealer Gamma Exposure (GEX) analytics.
 // Per-strike GEX from option chain OI, net GEX profile, zero-gamma flip level
 // (bisection on spot), and call/put wall detection.
 

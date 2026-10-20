@@ -1,4 +1,4 @@
-// OPEN-ALADDIN — 60FPS market microstructure simulator.
+// OPEN-ATLAS — 60FPS market microstructure simulator.
 // Geometric Brownian Motion + Merton jump-diffusion price paths, Level-2
 // order book generation around spot, and a time & sales tape. Deterministic
 // (seeded) so the terminal is reproducible.

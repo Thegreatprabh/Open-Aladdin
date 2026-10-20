@@ -1,4 +1,4 @@
-// OPEN-ALADDIN — strict market data & trading type definitions
+// OPEN-ATLAS — strict market data & trading type definitions
 
 export type Side = 'BUY' | 'SELL';
 export type PositionSide = 'LONG' | 'SHORT';

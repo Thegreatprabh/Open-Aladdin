@@ -1,4 +1,4 @@
-// OPEN-ALADDIN — Quant backtest engine.
+// OPEN-ATLAS — Quant backtest engine.
 // Historical strategy execution on generated OHLCV with full tearsheet math
 // (Sharpe, Sortino, Calmar, max drawdown, monthly returns) and a
 // 1,000-run Monte Carlo bootstrap of the return distribution.
