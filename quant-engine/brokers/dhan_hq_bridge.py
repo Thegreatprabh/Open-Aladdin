@@ -16,13 +16,20 @@ Safety model
         in a local paper ledger.
       - live=True: calls go through `urllib` (stdlib) to api.dhan.co with
         the access-token / client-id headers Dhan requires.
+      - Paper order ids are prefixed `PAPER-` and live only in the paper
+        ledger. In live mode the order id returned is the one assigned by
+        Dhan in its response body; if the response has none, the call
+        fails loudly instead of substituting a local id.
+      - Paper and live orders are kept in separate stores.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
+import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass
@@ -33,6 +40,12 @@ __all__ = ["DhanBridge", "DhanCredentialsError"]
 
 class DhanCredentialsError(RuntimeError):
     """Raised when live mode lacks DHAN_CLIENT_ID / DHAN_ACCESS_TOKEN."""
+
+
+class DhanOrderError(RuntimeError):
+    """Raised when an order operation cannot be completed truthfully:
+    unknown paper order, broker HTTP error, or a live response without
+    the broker-assigned order id."""
 
 
 # --------------------------------------------------------------------------- #
@@ -78,6 +91,7 @@ class DhanBridge(_Seg):
         self.client_id = os.environ.get("DHAN_CLIENT_ID", "")
         self.access_token = os.environ.get("DHAN_ACCESS_TOKEN", "")
         self._orders: dict[str, _PaperDhanOrder] = {}
+        self._live_orders: dict[str, dict] = {}
         self._request_log: list[dict] = []
         if live and (not self.client_id or not self.access_token):
             raise DhanCredentialsError(
@@ -106,8 +120,20 @@ class DhanBridge(_Seg):
         data = json.dumps(payload).encode() if payload else None
         req = urllib.request.Request(url, data=data, method=method,
                                      headers=self._headers())
-        with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
-            body = json.loads(resp.read().decode() or "{}")
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310
+                body = json.loads(resp.read().decode() or "{}")
+        except urllib.error.HTTPError as exc:
+            # Broker error bodies carry an error code/message, never our
+            # credentials; surface them and fail closed (no fake success).
+            detail = exc.read().decode(errors="replace")[:300]
+            raise DhanOrderError(
+                f"Dhan API error {exc.code} on {method} {path}: {detail}"
+            ) from exc
+        except urllib.error.URLError as exc:
+            raise DhanOrderError(
+                f"Dhan API unreachable on {method} {path}: {exc.reason}"
+            ) from exc
         record["response"] = body
         return {"mode": "live", "request": record, "response": body}
 
@@ -135,10 +161,10 @@ class DhanBridge(_Seg):
             "orderType": order_type,
             "validity": validity,
             "securityId": str(security_id),
-            "quantity": int(quantity),
-            "disclosedQuantity": int(disclosed_quantity),
-            "price": float(price),
-            "triggerPrice": float(trigger_price),
+            "quantity": quantity,
+            "disclosedQuantity": disclosed_quantity,
+            "price": price,
+            "triggerPrice": trigger_price,
             "afterMarketOrder": False,
             "amoTime": "",
             "boProfitValue": 0,
@@ -153,43 +179,118 @@ class DhanBridge(_Seg):
         self._validate(payload)
         return payload
 
+    _SEGMENTS = {"IDX_I", "NSE_EQ", "NSE_FNO", "BSE_EQ", "BSE_FNO",
+                 "MCX_COMM"}
+    _PRODUCTS = {"INTRADAY", "CNC", "MARGIN", "MTF", "BO", "CO"}
+    _ORDER_TYPES = {"LIMIT", "MARKET", "STOP_LOSS", "STOP_LOSS_MARKET"}
+    _VALIDITIES = {"DAY", "IOC"}
+
+    @staticmethod
+    def _finite(name: str, v, *, positive: bool = False) -> None:
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise ValueError(f"{name} must be a number")
+        if not math.isfinite(v):
+            raise ValueError(f"{name} must be finite")
+        if positive and v <= 0:
+            raise ValueError(f"{name} must be > 0")
+
     def _validate(self, p: dict) -> None:
-        if p["quantity"] <= 0:
+        q = p["quantity"]
+        if isinstance(q, bool) or not isinstance(q, int):
+            raise ValueError(
+                "quantity must be an integer (no silent truncation)")
+        if q <= 0:
             raise ValueError("quantity must be positive")
-        if p["orderType"] in ("LIMIT", "STOP_LOSS") and p["price"] <= 0:
-            raise ValueError(f"{p['orderType']} requires price > 0")
-        if p["orderType"] in ("STOP_LOSS", "STOP_LOSS_MARKET") \
-                and p["triggerPrice"] <= 0:
-            raise ValueError("stop orders require triggerPrice > 0")
+        dq = p["disclosedQuantity"]
+        if isinstance(dq, bool) or not isinstance(dq, int) \
+                or dq < 0 or dq > q:
+            raise ValueError("disclosedQuantity must be an integer in "
+                             "[0, quantity]")
+        if p["exchangeSegment"] not in self._SEGMENTS:
+            raise ValueError(
+                f"unsupported exchangeSegment: {p['exchangeSegment']!r}")
+        if p["transactionType"] not in ("BUY", "SELL"):
+            raise ValueError("transactionType must be BUY or SELL")
+        if p["productType"] not in self._PRODUCTS:
+            raise ValueError(f"unsupported productType: {p['productType']!r}")
+        if p["orderType"] not in self._ORDER_TYPES:
+            raise ValueError(f"unsupported orderType: {p['orderType']!r}")
+        if p["validity"] not in self._VALIDITIES:
+            raise ValueError(f"unsupported validity: {p['validity']!r}")
+        if not str(p["securityId"]).strip():
+            raise ValueError("securityId must be a non-empty string")
+        self._finite("price", p["price"])
+        self._finite("triggerPrice", p["triggerPrice"])
+        if p["orderType"] in ("LIMIT", "STOP_LOSS"):
+            self._finite("price", p["price"], positive=True)
+        if p["orderType"] in ("STOP_LOSS", "STOP_LOSS_MARKET"):
+            self._finite("triggerPrice", p["triggerPrice"], positive=True)
         if p["exchangeSegment"].endswith("FNO"):
             if not p.get("drvExpiryDate") or not p.get("drvOptionType"):
                 raise ValueError("F&O orders need drvExpiryDate + drvOptionType")
+            if p["drvOptionType"] not in ("CE", "PE"):
+                raise ValueError("drvOptionType must be CE or PE")
+            self._finite("drvStrikePrice", p.get("drvStrikePrice") or 0.0,
+                         positive=True)
 
     # ------------------------------------------------------------------ #
     # Orders
     # ------------------------------------------------------------------ #
-    def place_order(self, **kwargs) -> dict:
-        payload = self.build_order_payload(**kwargs)
-        order_id = uuid.uuid4().hex[:12].upper()
-        self._orders[order_id] = _PaperDhanOrder(order_id=order_id,
-                                                 payload=payload)
-        out = self._request("POST", "/orders", payload)
-        out["order_id"] = order_id
+    def _place(self, path: str, payload: dict) -> dict:
+        """Shared placement path. Paper: local PAPER- id + paper ledger.
+        Live: the id comes from Dhan's response body — never invented."""
+        out = self._request("POST", path, payload)
+        if not self.live:
+            order_id = "PAPER-" + uuid.uuid4().hex[:12].upper()
+            self._orders[order_id] = _PaperDhanOrder(order_id=order_id,
+                                                     payload=payload)
+            out["order_id"] = order_id
+            return out
+        body = out.get("response") or {}
+        broker_id = body.get("orderId") or body.get("order_id")
+        if not broker_id or not isinstance(broker_id, str):
+            raise DhanOrderError(
+                "Dhan response contained no orderId; refusing to "
+                "substitute a local one")
+        self._live_orders[broker_id] = payload
+        out["order_id"] = broker_id
         return out
 
+    def place_order(self, **kwargs) -> dict:
+        payload = self.build_order_payload(**kwargs)
+        return self._place("/orders", payload)
+
     def modify_order(self, order_id: str, **changes) -> dict:
-        if order_id in self._orders:
-            self._orders[order_id].payload.update(changes)
-            self._orders[order_id].status = "MODIFIED"
+        if not self.live:
+            po = self._orders.get(order_id)
+            if po is None:
+                raise DhanOrderError(
+                    f"unknown paper order {order_id!r}: nothing modified")
+            merged = {**po.payload, **changes}
+            self._validate({**merged,
+                            "drvExpiryDate": merged.get("drvExpiryDate"),
+                            "drvOptionType": merged.get("drvOptionType")})
+            po.payload.update(changes)
+            po.status = "MODIFIED"
         payload = {"dhanClientId": self.client_id or "PAPER-CLIENT",
                    "orderId": order_id, **changes}
-        return self._request("PUT", f"/orders/{order_id}", payload)
+        out = self._request("PUT", f"/orders/{order_id}", payload)
+        if self.live and order_id in self._live_orders:
+            self._live_orders[order_id].update(changes)
+        return out
 
     def cancel_order(self, order_id: str) -> dict:
-        if order_id in self._orders:
-            self._orders[order_id].status = "CANCELLED"
-        return self._request("DELETE", f"/orders/{order_id}",
-                             {"orderId": order_id})
+        if not self.live:
+            po = self._orders.get(order_id)
+            if po is None:
+                raise DhanOrderError(
+                    f"unknown paper order {order_id!r}: nothing cancelled")
+            po.status = "CANCELLED"
+        out = self._request("DELETE", f"/orders/{order_id}",
+                            {"orderId": order_id})
+        if self.live:
+            self._live_orders.pop(order_id, None)
+        return out
 
     def place_super_order(self, *, security_id: str, exchange_segment: str,
                           transaction_type: str, quantity: int,
@@ -199,6 +300,14 @@ class DhanBridge(_Seg):
                           validity: str = "DAY", **drv_kwargs) -> dict:
         """Dhan Super Order: entry + target + SL (+ optional trailing jump)
         in one request -> POST /super/orders."""
+        for name, v, pos in (("target_price", target_price, True),
+                             ("stop_loss_price", stop_loss_price, True),
+                             ("trailing_jump", trailing_jump, False)):
+            if isinstance(v, bool) or not isinstance(v, (int, float)) \
+                    or not math.isfinite(v) or (v <= 0 if pos else v < 0):
+                raise ValueError(
+                    f"{name} must be {'positive' if pos else '>= 0'} "
+                    "and finite")
         base = self.build_order_payload(
             security_id=security_id, exchange_segment=exchange_segment,
             transaction_type=transaction_type, quantity=quantity,
@@ -208,12 +317,7 @@ class DhanBridge(_Seg):
                    "targetPrice": float(target_price),
                    "stopLossPrice": float(stop_loss_price),
                    "trailingJump": float(trailing_jump)}
-        order_id = uuid.uuid4().hex[:12].upper()
-        self._orders[order_id] = _PaperDhanOrder(order_id=order_id,
-                                                 payload=payload)
-        out = self._request("POST", "/super/orders", payload)
-        out["order_id"] = order_id
-        return out
+        return self._place("/super/orders", payload)
 
     def place_bracket_order(self, *, security_id: str, exchange_segment: str,
                             transaction_type: str, quantity: int,

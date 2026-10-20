@@ -171,11 +171,20 @@ struct PriceLevel {
 }
 
 impl PriceLevel {
+    // Saturating aggregation: with adversarial quantities, a plain `sum()`
+    // could wrap (release builds) and under-report depth. Saturation keeps
+    // depth a conservative upper bound instead of a wrapped small number.
     fn visible_qty(&self) -> Qty {
-        self.queue.iter().map(Order::visible_qty).sum()
+        self.queue
+            .iter()
+            .map(Order::visible_qty)
+            .fold(0, Qty::saturating_add)
     }
     fn total_qty(&self) -> Qty {
-        self.queue.iter().map(Order::remaining).sum()
+        self.queue
+            .iter()
+            .map(Order::remaining)
+            .fold(0, Qty::saturating_add)
     }
 }
 
@@ -784,6 +793,15 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn depth_aggregation_saturates_instead_of_wrapping() {
+        let mut book = OrderBook::new();
+        book.insert_order(bid(1, 10_000, u64::MAX - 5)).unwrap();
+        book.insert_order(bid(2, 10_000, 1_000)).unwrap();
+        let d = book.depth(Side::Bid, 10);
+        assert_eq!(d[0].total_qty, u64::MAX); // saturated, not wrapped to 994
     }
 
     #[test]

@@ -13,15 +13,23 @@ Safety model
 * No network call is made at import time.
 * Every method that would talk to Zerodha is guarded by `live`:
       - live=False (default): the request payload is built, validated and
-        returned / recorded locally (paper mode).
+        returned / recorded locally (paper mode). Paper order ids are
+        prefixed `PAPER-` and live only in the paper store.
       - live=True: the call is delegated to a real `kiteconnect.KiteConnect`
         instance if that package is installed and an access token is set.
+        The broker-assigned order id from the SDK response is the only id
+        ever returned for a live order — a local id is never substituted.
+      - Paper and live orders are kept in separate stores; a live order
+        never appears in the paper book and vice versa.
+      - Session responses never contain access tokens or secrets.
 """
 
 from __future__ import annotations
 
 import json
+import math
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -34,6 +42,15 @@ __all__ = ["KiteBridge", "KiteTickerSim", "KiteCredentialsError"]
 
 class KiteCredentialsError(RuntimeError):
     """Raised when live mode is requested without credentials configured."""
+
+
+class KiteOrderError(RuntimeError):
+    """Raised when an order operation cannot be completed truthfully:
+    unknown paper order, broker rejection, or a broker response that does
+    not contain the order id it was required to return."""
+
+
+_SYMBOL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 .&'_\-]{0,63}$")
 
 
 # --------------------------------------------------------------------------- #
@@ -93,6 +110,7 @@ class KiteBridge(_Const):
         self.user_id = os.environ.get("KITE_USER_ID", "")
         self._kite = None
         self._paper_orders: dict[str, _PaperOrder] = {}
+        self._live_orders: dict[str, dict] = {}
         self._request_log: list[dict] = []
         if live:
             self.connect()
@@ -115,8 +133,8 @@ class KiteBridge(_Const):
                 ) from exc
             self._kite = KiteConnect(api_key=self.api_key)
             self._kite.set_access_token(self.access_token)
-        return {"status": "connected", "user_id": self.user_id,
-                "live": self.live}
+        return {"status": "live-ready" if self.live else "paper-ready",
+                "user_id": self.user_id, "live": self.live}
 
     def login_url(self) -> str:
         if not self.api_key:
@@ -124,18 +142,35 @@ class KiteBridge(_Const):
         return f"https://kite.zerodha.com/connect/login?v=3&api_key={self.api_key}"
 
     def generate_session(self, request_token: str) -> dict:
-        """Exchange a request token for an access token (live mode only)."""
+        """Exchange a request token for an access token (live mode only).
+
+        The checksum is computed and verified by Zerodha's servers as part
+        of the SDK's session exchange — this wrapper performs no checksum
+        verification of its own and therefore reports none. The returned
+        dict is sanitized: the access token is stored on the instance only
+        and is never included in the response (or in any log record).
+        """
+        if not request_token or not isinstance(request_token, str):
+            raise KiteCredentialsError("request_token is required")
         if not self.live or self._kite is None:
             return {"mode": "paper",
-                    "note": "session exchange skipped in paper mode",
-                    "request_token": request_token}
-        import hashlib
-        checksum = hashlib.sha256(
-            f"{self.api_key}{request_token}{self.api_secret}".encode()
-        ).hexdigest()
-        data = self._kite.generate_session(request_token, api_secret=self.api_secret)
-        self.access_token = data["access_token"]
-        return {"checksum_verified": bool(checksum), **data}
+                    "note": "session exchange skipped in paper mode"}
+        try:
+            data = self._kite.generate_session(
+                request_token, api_secret=self.api_secret)
+        except Exception as exc:  # SDK/network rejection: fail closed.
+            raise KiteCredentialsError(
+                f"broker rejected the session exchange: {exc}") from exc
+        token = data.get("access_token")
+        if not token:
+            raise KiteCredentialsError(
+                "broker session response contained no access_token")
+        self.access_token = token
+        # Sanitized view only — never return tokens/secrets to callers.
+        return {"mode": "live",
+                "user_id": data.get("user_id", self.user_id),
+                "user_name": data.get("user_name"),
+                "login_time": str(data.get("login_time", ""))}
 
     # ------------------------------------------------------------------ #
     # Internal request plumbing
@@ -165,8 +200,14 @@ class KiteBridge(_Const):
                     squareoff: float | None = None,
                     stoploss: float | None = None,
                     trailing_stoploss: float | None = None) -> dict:
-        """Place an order. Returns the dispatch record; the order id is in
-        response/data in live mode, or the paper order id otherwise."""
+        """Place an order.
+
+        Paper mode: returns a `PAPER-…` id and records the order in the
+        paper store only. Live mode: delegates to the SDK and returns the
+        **broker-assigned** order id from its response; if the SDK raises
+        or returns no id, KiteOrderError is raised — an id is never
+        invented locally for a live order.
+        """
         payload = {
             "variety": variety, "exchange": exchange,
             "tradingsymbol": tradingsymbol,
@@ -181,48 +222,163 @@ class KiteBridge(_Const):
         payload = {k: v for k, v in payload.items() if v is not None}
         self._validate_order(payload)
 
-        order_id = uuid.uuid4().hex[:16].upper()
-        self._paper_orders[order_id] = _PaperOrder(order_id=order_id,
-                                                   payload=payload)
-        live_fn = None
-        if self._kite is not None:
-            def live_fn():  # noqa: F811
-                return self._kite.place_order(**payload)
-        out = self._dispatch("POST", "/orders/{variety}".format(**payload)
-                             if "variety" in payload else "/orders/regular",
-                             payload, live_fn)
-        out["order_id"] = order_id
-        return out
+        if not (self.live and self._kite is not None):
+            order_id = "PAPER-" + uuid.uuid4().hex[:16].upper()
+            self._paper_orders[order_id] = _PaperOrder(order_id=order_id,
+                                                       payload=payload)
+            out = self._dispatch(
+                "POST", f"/orders/{payload['variety']}", payload)
+            out["order_id"] = order_id
+            return out
+
+        try:
+            result = self._kite.place_order(**payload)
+        except Exception as exc:
+            raise KiteOrderError(
+                f"broker rejected the order: {exc}") from exc
+        broker_id = result if isinstance(result, str) else (
+            result.get("order_id") if isinstance(result, dict) else None)
+        if not broker_id or not isinstance(broker_id, str):
+            raise KiteOrderError(
+                "broker response did not contain an order id; refusing to "
+                "substitute a local one")
+        self._live_orders[broker_id] = payload
+        record = {"ts": time.time(), "method": "POST",
+                  "endpoint": f"/orders/{payload['variety']}",
+                  "payload": payload, "live": True, "response": result}
+        self._request_log.append(record)
+        return {"mode": "live", "request": record, "response": result,
+                "order_id": broker_id}
+
+    _EXCHANGES = {"NSE", "BSE", "NFO", "BFO", "MCX", "CDS"}
+    _PRODUCTS = {"MIS", "CNC", "NRML"}
+    _ORDER_TYPES = {"MARKET", "LIMIT", "SL-M", "SL"}
+    _VARIETIES = {"regular", "amo", "co", "bo"}
+    _VALIDITIES = {"DAY", "IOC", "TTL"}
+
+    @staticmethod
+    def _check_price(name: str, v: Any) -> None:
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise ValueError(f"{name} must be a number")
+        if not math.isfinite(v) or v <= 0:
+            raise ValueError(f"{name} must be positive and finite")
 
     def _validate_order(self, p: dict) -> None:
-        if p["quantity"] <= 0:
+        q = p.get("quantity")
+        if isinstance(q, bool) or not isinstance(q, int):
+            raise ValueError("quantity must be an integer")
+        if q <= 0:
             raise ValueError("quantity must be positive")
-        if p["order_type"] in ("LIMIT", "SL") and not p.get("price"):
-            raise ValueError(f"{p['order_type']} order requires a price")
-        if p["order_type"] in ("SL", "SL-M") and not p.get("trigger_price"):
-            raise ValueError(f"{p['order_type']} order requires trigger_price")
+        if p.get("exchange") not in self._EXCHANGES:
+            raise ValueError(f"unsupported exchange: {p.get('exchange')!r}")
+        if p.get("transaction_type") not in ("BUY", "SELL"):
+            raise ValueError("transaction_type must be BUY or SELL")
+        if p.get("product") not in self._PRODUCTS:
+            raise ValueError(f"unsupported product: {p.get('product')!r}")
+        if p.get("order_type") not in self._ORDER_TYPES:
+            raise ValueError(f"unsupported order_type: {p.get('order_type')!r}")
+        if p.get("variety", "regular") not in self._VARIETIES:
+            raise ValueError(f"unsupported variety: {p.get('variety')!r}")
+        if p.get("validity", "DAY") not in self._VALIDITIES:
+            raise ValueError(f"unsupported validity: {p.get('validity')!r}")
+        sym = p.get("tradingsymbol")
+        if not isinstance(sym, str) or not _SYMBOL_RE.match(sym):
+            raise ValueError(f"invalid tradingsymbol: {sym!r}")
+        ot = p["order_type"]
+        if ot in ("LIMIT", "SL"):
+            if p.get("price") is None:
+                raise ValueError(f"{ot} order requires a price")
+            self._check_price("price", p["price"])
+        elif p.get("price") is not None:
+            self._check_price("price", p["price"])
+        if ot in ("SL", "SL-M"):
+            if p.get("trigger_price") is None:
+                raise ValueError(f"{ot} order requires trigger_price")
+            self._check_price("trigger_price", p["trigger_price"])
+        elif p.get("trigger_price") is not None:
+            self._check_price("trigger_price", p["trigger_price"])
+        dq = p.get("disclosed_quantity")
+        if dq is not None:
+            if isinstance(dq, bool) or not isinstance(dq, int) \
+                    or dq < 0 or dq > q:
+                raise ValueError(
+                    "disclosed_quantity must be an integer in [0, quantity]")
+        tag = p.get("tag")
+        if tag is not None and (not isinstance(tag, str) or len(tag) > 20):
+            raise ValueError("tag must be a string of at most 20 characters")
+        for opt in ("squareoff", "stoploss", "trailing_stoploss"):
+            v = p.get(opt)
+            if v is not None:
+                if isinstance(v, bool) or not isinstance(v, (int, float)) \
+                        or not math.isfinite(v) or v < 0:
+                    raise ValueError(f"{opt} must be a finite number >= 0")
 
     def modify_order(self, *, order_id: str, variety: str = "regular",
                      quantity: int | None = None, price: float | None = None,
                      order_type: str | None = None,
                      trigger_price: float | None = None,
                      validity: str | None = None) -> dict:
-        payload = {"order_id": order_id, "variety": variety,
-                   "quantity": quantity, "price": price,
+        """Modify an order. Paper: the id must exist in the paper store.
+        Live: delegated to the SDK; the broker's response is returned."""
+        changes = {"quantity": quantity, "price": price,
                    "order_type": order_type, "trigger_price": trigger_price,
                    "validity": validity}
-        payload = {k: v for k, v in payload.items() if v is not None}
-        if order_id in self._paper_orders:
-            po = self._paper_orders[order_id]
-            for k, v in payload.items():
-                if k in po.payload:
-                    po.payload[k] = v
-            po.status = "MODIFIED"
+        changes = {k: v for k, v in changes.items() if v is not None}
+
+        if self.live and self._kite is not None:
+            try:
+                result = self._kite.modify_order(
+                    variety=variety, order_id=order_id, **changes)
+            except Exception as exc:
+                raise KiteOrderError(
+                    f"broker rejected the modification: {exc}") from exc
+            if order_id in self._live_orders:
+                self._live_orders[order_id].update(changes)
+            record = {"ts": time.time(), "method": "PUT",
+                      "endpoint": f"/orders/{variety}/{order_id}",
+                      "payload": {"order_id": order_id, **changes},
+                      "live": True, "response": result}
+            self._request_log.append(record)
+            return {"mode": "live", "request": record, "response": result,
+                    "order_id": result if isinstance(result, str)
+                    else order_id}
+
+        po = self._paper_orders.get(order_id)
+        if po is None:
+            raise KiteOrderError(
+                f"unknown paper order {order_id!r}: nothing was modified")
+        merged = {**po.payload, **changes}
+        self._validate_order(merged)
+        po.payload.update(changes)
+        po.status = "MODIFIED"
+        payload = {"order_id": order_id, "variety": variety, **changes}
         return self._dispatch("PUT", f"/orders/{variety}/{order_id}", payload)
 
     def cancel_order(self, *, order_id: str, variety: str = "regular") -> dict:
-        if order_id in self._paper_orders:
-            self._paper_orders[order_id].status = "CANCELLED"
+        """Cancel an order. Paper: the id must exist in the paper store.
+        Live: delegated to the SDK; the broker's response is returned."""
+        if self.live and self._kite is not None:
+            try:
+                result = self._kite.cancel_order(variety=variety,
+                                                 order_id=order_id)
+            except Exception as exc:
+                raise KiteOrderError(
+                    f"broker rejected the cancellation: {exc}") from exc
+            self._live_orders.pop(order_id, None)
+            record = {"ts": time.time(), "method": "DELETE",
+                      "endpoint": f"/orders/{variety}/{order_id}",
+                      "payload": {"order_id": order_id},
+                      "live": True, "response": result}
+            self._request_log.append(record)
+            return {"mode": "live", "request": record, "response": result,
+                    "order_id": result if isinstance(result, str)
+                    else order_id}
+
+        po = self._paper_orders.get(order_id)
+        if po is None:
+            raise KiteOrderError(
+                f"unknown paper order {order_id!r}: nothing was cancelled")
+        po.status = "CANCELLED"
         return self._dispatch("DELETE", f"/orders/{variety}/{order_id}",
                               {"order_id": order_id, "variety": variety})
 

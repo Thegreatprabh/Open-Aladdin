@@ -29,7 +29,7 @@ use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use open_atlas_matching_engine::fix_parser::{
-    execution_report, FixBuilder, FixMessage, MAX_MESSAGE_BYTES,
+    execution_report, FixBuilder, FixMessage, MAX_MESSAGE_BYTES, SOH,
 };
 use open_atlas_matching_engine::{Order, OrderBook, OrderRequest, RiskGate, Side};
 
@@ -296,32 +296,57 @@ fn handle_cancel(state: &mut State, msg: &FixMessage) -> Vec<String> {
     }
 }
 
-/// Extract complete FIX messages from the buffer (framing: a message ends
-/// with `10=ddd<SOH>`). Returns the messages and keeps any partial tail.
+/// Extract complete FIX messages from the buffer using proper FIX
+/// framing: the message length is taken from BodyLength (tag 9), never
+/// from line boundaries or TCP read sizes. A frame is emitted only when
+/// its full declared length has arrived AND the bytes at the computed
+/// boundary are the `10=` checksum field. Incomplete tails stay buffered;
+/// corrupt frames are dropped and the stream resynchronizes on the next
+/// `8=FIX` header. Buffer growth is bounded by the caller.
 fn extract_messages(buf: &mut String) -> Vec<String> {
     let mut out = Vec::new();
     while let Some(start) = buf.find("8=FIX") {
         if start > 0 {
             buf.drain(..start);
         }
-        // Find the checksum terminator: SOH "10=" ddd SOH
-        let bytes = buf.as_bytes();
-        let mut end: Option<usize> = None;
-        let mut i = 0usize;
-        while i + 7 < bytes.len() {
-            if bytes[i] == 0x01 && &buf[i + 1..i + 4] == "10=" && bytes[i + 7] == 0x01 {
-                let digits = &buf[i + 4..i + 7];
-                if digits.chars().all(|c| c.is_ascii_digit()) {
-                    end = Some(i + 8);
-                    break;
-                }
+        // Locate the tag-9 field: SOH "9=" <digits> SOH.
+        let Some(rel9) = buf.find("\u{1}9=") else {
+            if buf.len() > MAX_MESSAGE_BYTES {
+                buf.clear();
             }
-            i += 1;
+            break;
+        };
+        let len_start = rel9 + 3;
+        let Some(rel_end) = buf[len_start..].find(SOH) else {
+            if buf.len() > MAX_MESSAGE_BYTES {
+                buf.clear();
+            }
+            break;
+        };
+        let digits = &buf[len_start..len_start + rel_end];
+        let Ok(body_len) = digits.parse::<usize>() else {
+            // Corrupt header: skip one byte and resynchronize.
+            buf.drain(..1);
+            continue;
+        };
+        let body_start = len_start + rel_end + 1;
+        // The trailer field "10=ddd" + SOH is exactly 7 bytes.
+        let Some(total) = body_start
+            .checked_add(body_len)
+            .and_then(|n| n.checked_add(7))
+        else {
+            buf.drain(..1);
+            continue;
+        };
+        if buf.len() < total {
+            break; // incomplete frame: wait for more bytes
         }
-        if let Some(end) = end {
-            out.push(buf.drain(..end).collect());
+        let candidate: String = buf.drain(..total).collect();
+        let b = candidate.as_bytes();
+        if b[total - 7] == b'1' && b[total - 6] == b'0' && b[total - 5] == b'=' {
+            out.push(candidate);
         } else {
-            break; // partial message: keep the tail for the next read
+            eprintln!("[gateway] frame boundary mismatch, frame dropped");
         }
     }
     out
@@ -374,4 +399,80 @@ fn main() -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use open_atlas_matching_engine::fix_parser::new_order_single;
+
+    fn nos(cl: &str, side: char, qty: f64, price: f64) -> String {
+        new_order_single(
+            "TEST",
+            "ATLAS",
+            1,
+            "20261020-03:30:00.000",
+            cl,
+            "NIFTY",
+            side,
+            qty,
+            price,
+            "20261020-03:30:00.000",
+        )
+    }
+
+    #[test]
+    fn fragmented_message_is_reassembled() {
+        let wire = nos("F1", '1', 5.0, 100.0);
+        let mut buf = String::new();
+        let mut got = Vec::new();
+        // Feed three bytes at a time, as a fragmented TCP stream would.
+        for chunk in wire.as_bytes().chunks(3) {
+            buf.push_str(std::str::from_utf8(chunk).unwrap());
+            got.extend(extract_messages(&mut buf));
+        }
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0], wire);
+    }
+
+    #[test]
+    fn concatenated_messages_are_split() {
+        let mut buf = nos("A1", '2', 10.0, 100.0);
+        buf.push_str(&nos("A2", '1', 4.0, 100.0));
+        let got = extract_messages(&mut buf);
+        assert_eq!(got.len(), 2);
+        assert!(got[0].contains("11=A1"));
+        assert!(got[1].contains("11=A2"));
+        assert!(buf.is_empty());
+    }
+
+    #[test]
+    fn garbage_prefix_is_skipped_and_partial_tail_kept() {
+        let wire = nos("G1", '1', 5.0, 100.0);
+        let half = wire.len() / 2;
+        let mut buf = format!("random noise\r\n{}", &wire[..half]);
+        assert!(extract_messages(&mut buf).is_empty());
+        buf.push_str(&wire[half..]);
+        let got = extract_messages(&mut buf);
+        assert_eq!(got.len(), 1);
+    }
+
+    #[test]
+    fn handler_routes_through_risk_and_book() {
+        let mut st = State::new();
+        // Resting sell, then a crossing buy: the fill must be at maker price.
+        let r1 = handle_message(&mut st, &nos("S1", '2', 10.0, 100.0));
+        assert_eq!(r1.len(), 1);
+        assert!(r1[0].contains("150=0"), "resting ack expected: {}", r1[0]);
+        let r2 = handle_message(&mut st, &nos("B1", '1', 4.0, 100.50));
+        assert_eq!(r2.len(), 1);
+        assert!(r2[0].contains("150=F"));
+        assert!(r2[0].contains("31=100"), "maker price: {}", r2[0]);
+        // Oversized order: rejected by the risk gate, not acknowledged.
+        let r3 = handle_message(&mut st, &nos("B2", '1', 200_000.0, 100.0));
+        assert_eq!(r3.len(), 1);
+        assert!(r3[0].contains("150=8"));
+        // Garbage never produces a reply.
+        assert!(handle_message(&mut st, "not fix at all").is_empty());
+    }
 }

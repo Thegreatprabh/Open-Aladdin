@@ -123,6 +123,14 @@ export default function App() {
   // ── Order execution ──────────────────────────────────────────────────────
   const placeOrder = useCallback(
     (o: NewOrder): OrderResult => {
+      // Validate before any accounting: a zero/negative/NaN quantity coming
+      // from the order form must never reach margin or position math.
+      if (!Number.isFinite(o.qty) || !Number.isInteger(o.qty) || o.qty <= 0) {
+        return { ok: false, reason: 'Invalid quantity: must be a positive whole number' };
+      }
+      if (o.price != null && (!Number.isFinite(o.price) || o.price <= 0)) {
+        return { ok: false, reason: 'Invalid limit price' };
+      }
       const acct = accountRef.current;
       const qmap = new Map(engine.getQuotes().map((q) => [q.symbol, q]));
       const lot = o.instrumentType === 'OPTION' ? LOT_SIZES[o.underlying] ?? 25 : 1;
