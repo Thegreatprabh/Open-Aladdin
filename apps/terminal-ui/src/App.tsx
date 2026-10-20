@@ -1,4 +1,4 @@
-// OPEN-ALADDIN — master application shell.
+// OPEN-ATLAS — master application shell.
 // Layout: header ticker / sidebar / routed views. Owns the market engine
 // loop, the ₹1,00,00,000 institutional paper account, order execution with
 // SPAN+exposure margin blocking, live MTM marking and net portfolio Greeks.

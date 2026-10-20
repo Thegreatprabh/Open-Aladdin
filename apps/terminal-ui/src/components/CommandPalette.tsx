@@ -99,7 +99,7 @@ export default function CommandPalette({ open, onClose, commands }: Props) {
         <div className="px-4 py-2 border-t border-edge text-[10px] text-gray-600 flex gap-4">
           <span>↑↓ navigate</span>
           <span>⏎ execute</span>
-          <span className="ml-auto">OPEN-ALADDIN command mode</span>
+          <span className="ml-auto">OPEN-ATLAS command mode</span>
         </div>
       </div>
     </div>

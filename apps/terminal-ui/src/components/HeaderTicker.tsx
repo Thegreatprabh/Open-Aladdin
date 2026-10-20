@@ -22,7 +22,7 @@ export default function HeaderTicker({ quotes, simTime, speed, onSpeed, paused, 
       <div className="flex items-center gap-2 px-4 border-r border-edge shrink-0">
         <div className="w-2.5 h-2.5 rounded-full bg-amber animate-pulse" />
         <div className="leading-none">
-          <div className="text-[13px] font-extrabold tracking-widest text-white">OPEN-ALADDIN</div>
+          <div className="text-[13px] font-extrabold tracking-widest text-white">OPEN-ATLAS</div>
           <div className="text-[9px] tracking-[0.2em] text-qcyan">INSTITUTIONAL TERMINAL</div>
         </div>
       </div>
