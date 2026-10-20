@@ -1,5 +1,5 @@
 // Monorepo & 50k Generator — interactive file-tree explorer of the full
-// open-aladdin monorepo with line-numbered code viewer, copy/download, and a
+// open-atlas monorepo with line-numbered code viewer, copy/download, and a
 // one-click in-browser generator that materialises a 50,000+ line bundle of
 // real quant strategy modules, C++/Rust matching-engine headers, FIX 4.4
 // schemas and synthetic Nifty 50 / BankNifty Level-2 tick datasets.
@@ -14,7 +14,7 @@ interface TreeNode {
 }
 
 const TREE: TreeNode[] = [
-  { name: 'open-aladdin/', children: [
+  { name: 'open-atlas/', children: [
     { name: 'README.md', file: 'README.md' },
     { name: 'LICENSE', file: 'LICENSE' },
     { name: 'docker-compose.yml', file: 'docker-compose.yml' },
@@ -48,7 +48,7 @@ const TREE: TreeNode[] = [
 
 const FILES: Record<string, { lang: string; content: string }> = {
   'README.md': { lang: 'md', content: [
-    '# OPEN-ALADDIN',
+    '# OPEN-ATLAS',
     '',
     '> Institutional Quantitative Trading, 3D Gamma Exposure (GEX) & Low-Latency Orderflow Terminal',
     '',
@@ -78,7 +78,7 @@ const FILES: Record<string, { lang: string; content: string }> = {
     'MIT — see LICENSE.',
   ].join('\n') },
   'LICENSE': { lang: 'txt', content: [
-    'MIT License', '', 'Copyright (c) 2026 OPEN-ALADDIN contributors', '',
+    'MIT License', '', 'Copyright (c) 2026 OPEN-ATLAS contributors', '',
     'Permission is hereby granted, free of charge, to any person obtaining a copy',
     'of this software and associated documentation files (the "Software"), to deal',
     'in the Software without restriction, including without limitation the rights',
@@ -96,7 +96,7 @@ const FILES: Record<string, { lang: string; content: string }> = {
     '  matching-engine:', '    build: ./core/matching-engine', '    ports: ["9000:9000"]',
     '    deploy: {resources: {limits: {cpus: "4"}}}',
     '  redis:', '    image: redis:7-alpine', '    ports: ["6379:6379"]',
-    '  postgres:', '    image: postgres:16-alpine', '    environment: [POSTGRES_DB=aladdin]',
+    '  postgres:', '    image: postgres:16-alpine', '    environment: [POSTGRES_DB=atlas]',
   ].join('\n') },
   'Makefile': { lang: 'make', content: [
     '.PHONY: dev test generate build', '',
@@ -110,7 +110,7 @@ const FILES: Record<string, { lang: string; content: string }> = {
   ].join('\n') },
   'scripts/generate_50k_monorepo.py': { lang: 'python', content: [
     '#!/usr/bin/env python3',
-    '"""OPEN-ALADDIN 50k-line monorepo generator.',
+    '"""OPEN-ATLAS 50k-line monorepo generator.',
     'Generates real quant strategy modules, C++/Rust matching-engine headers,',
     'FIX 4.4 protocol schemas and synthetic Nifty 50 / BankNifty L2 tick data.',
     'Usage: python3 scripts/generate_50k_monorepo.py --out generated/',
@@ -169,7 +169,7 @@ const FILES: Record<string, { lang: string; content: string }> = {
     'if __name__ == "__main__":',
     '    main()',
   ].join('\n') },
-  'apps/terminal-ui/package.json': { lang: 'json', content: '{\n  "name": "open-aladdin-terminal",\n  "version": "0.1.0",\n  "scripts": { "dev": "vite", "build": "tsc && vite build" },\n  "dependencies": { "react": "^18.3.1", "react-dom": "^18.3.1", "three": "^0.169.0" }\n}' },
+  'apps/terminal-ui/package.json': { lang: 'json', content: '{\n  "name": "open-atlas-terminal",\n  "version": "0.1.0",\n  "scripts": { "dev": "vite", "build": "tsc && vite build" },\n  "dependencies": { "react": "^18.3.1", "react-dom": "^18.3.1", "three": "^0.169.0" }\n}' },
   'apps/terminal-ui/src/engine/blackScholes.ts': { lang: 'ts', content: [
     '// Exact BSM: normCdf via Abramowitz-Stegun, full Greek stack.',
     'export function normPdf(x: number): number {',
@@ -210,7 +210,7 @@ const FILES: Record<string, { lang: string; content: string }> = {
     '', '[dependencies]', 'rustc-hash = "2.0"',
   ].join('\n') },
   'core/matching-engine/src/lib.rs': { lang: 'rust', content: [
-    '//! OPEN-ALADDIN matching engine: price-time priority LOB, FIX 4.4 parser,',
+    '//! OPEN-ATLAS matching engine: price-time priority LOB, FIX 4.4 parser,',
     '//! pre-trade risk gate. Single-threaded hot path, <2us add/cancel target.',
     'pub mod lob;',
     'pub mod fix_parser;',
@@ -545,7 +545,7 @@ function generate50kBundle(): { text: string; lines: number; sections: [string, 
 
 export default function RepoExplorer50kView() {
   const [selected, setSelected] = useState('README.md');
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ 'open-aladdin/': true });
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ 'open-atlas/': true });
   const [copied, setCopied] = useState(false);
   const [genInfo, setGenInfo] = useState<{ lines: number; sections: [string, number][] } | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -643,7 +643,7 @@ export default function RepoExplorer50kView() {
                 </div>
               ))}
               <button
-                onClick={() => downloadText('open-aladdin-50k-bundle.txt', bundle)}
+                onClick={() => downloadText('open-atlas-50k-bundle.txt', bundle)}
                 className="mt-2 w-full py-1.5 bg-qcyan text-base font-bold text-[11px] rounded"
               >
                 ⤓ DOWNLOAD BUNDLE (.txt)

@@ -50,7 +50,7 @@ export default function QuantBacktesterView() {
     const blob = new Blob([backtestToCsv(result, T.cash)], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `open-aladdin-backtest-${strategy}.csv`;
+    a.download = `open-atlas-backtest-${strategy}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
