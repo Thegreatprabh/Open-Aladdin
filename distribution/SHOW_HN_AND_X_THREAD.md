@@ -1,4 +1,4 @@
-# Show HN + X Launch Kit — OPEN-ALADDIN
+# Show HN + X Launch Kit — OPEN-ATLAS
 
 Copy-paste-ready launch texts. Post from your own accounts. Timing: **Show HN first, X thread ~1 hour later** so HN
 feedback can shape the thread. Reply to every comment in the first hour on both platforms.
@@ -7,9 +7,9 @@ feedback can shape the thread. Reply to every comment in the first hour on both 
 
 ## Hacker News — Show HN
 
-**Title:** `Show HN: OPEN-ALADDIN – open-source quant terminal with 3D gamma-exposure analytics`
+**Title:** `Show HN: OPEN-ATLAS – open-source quant terminal with 3D gamma-exposure analytics`
 
-**URL:** `https://github.com/Thegreatprabh/Open-Aladdin`
+**URL:** `https://github.com/Thegreatprabh/Open-Atlas`
 
 **Text:**
 
@@ -41,10 +41,10 @@ structures. Happy to answer anything.
 Post these as a thread (reply chain, first post stands alone). Best time: ~8 PM IST. Pin the first post.
 
 **1/7**
-I built OPEN-ALADDIN — an open-source, Bloomberg-style quant terminal for options traders. React front-end, Rust
+I built OPEN-ATLAS — an open-source, Bloomberg-style quant terminal for options traders. React front-end, Rust
 matching engine, Python quant stack. Runs entirely in your browser against a live market simulator. MIT licensed 🧵
 
-github.com/Thegreatprabh/Open-Aladdin
+github.com/Thegreatprabh/Open-Atlas
 
 **2/7**
 The terminal: live candlesticks, Level-2 order book, time & sales tape, and an order dock wired to a ₹1 Cr paper
@@ -82,7 +82,7 @@ post, only the most relevant, and never in the first post.
 
 ## LinkedIn variant (single post)
 
-I'm open-sourcing OPEN-ALADDIN — an institutional-style quantitative trading terminal I built as a learning and
+I'm open-sourcing OPEN-ATLAS — an institutional-style quantitative trading terminal I built as a learning and
 research project.
 
 It combines a React web terminal (live market simulator, Level-2 depth, options chain with payoff builder, 3D
@@ -92,7 +92,7 @@ third-order Greeks, Heston calibration, Monte Carlo backtesting).
 Everything is simulated/paper — no real money, no keys — which makes it a clean environment for learning options
 microstructure, Greeks and backtest design. MIT licensed, runs from a fresh clone.
 
-Repo: github.com/Thegreatprabh/Open-Aladdin
+Repo: github.com/Thegreatprabh/Open-Atlas
 
 #OpenSource #QuantFinance #FinTech #Rust #React #OptionsTrading #BuildInPublic
 

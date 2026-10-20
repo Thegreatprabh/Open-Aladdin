@@ -1,4 +1,4 @@
-# OPEN-ALADDIN — full-stack container orchestration.
+# OPEN-ATLAS — full-stack container orchestration.
 #
 #   docker compose up --build
 #
@@ -26,7 +26,7 @@ services:
       - matching-engine
       - quant-engine
     networks:
-      - aladdin-net
+      - atlas-net
 
   matching-engine:
     build:
@@ -37,7 +37,7 @@ services:
         WORKDIR /build
         COPY . .
         RUN mkdir -p src/bin && cat > src/bin/fix_gateway.rs <<'EOF'
-        use open_aladdin_matching_engine::fix_parser::{execution_report, FixMessage};
+        use open_atlas_matching_engine::fix_parser::{execution_report, FixMessage};
         use std::io::{BufRead, BufReader, Write};
         use std::net::TcpListener;
         fn main() -> std::io::Result<()> {
@@ -74,7 +74,7 @@ services:
     depends_on:
       - redis
     networks:
-      - aladdin-net
+      - atlas-net
 
   quant-engine:
     build:
@@ -89,7 +89,7 @@ services:
         import math
         from fastapi import FastAPI
         from pydantic import BaseModel
-        app = FastAPI(title="OPEN-ALADDIN Quant Engine")
+        app = FastAPI(title="OPEN-ATLAS Quant Engine")
         def _n(x): return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
         def _np(x): return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
         class BsmRequest(BaseModel):
@@ -125,7 +125,7 @@ services:
     depends_on:
       - timescaledb
     networks:
-      - aladdin-net
+      - atlas-net
 
   redis:
     image: redis:7-alpine
@@ -140,25 +140,25 @@ services:
       timeout: 3s
       retries: 10
     networks:
-      - aladdin-net
+      - atlas-net
 
   timescaledb:
     image: timescale/timescaledb:latest-pg16
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: aladdin
-      POSTGRES_PASSWORD: aladdin
-      POSTGRES_DB: open_aladdin
+      POSTGRES_USER: atlas
+      POSTGRES_PASSWORD: atlas
+      POSTGRES_DB: open_atlas
     volumes:
       - tsdb_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aladdin -d open_aladdin"]
+      test: ["CMD-SHELL", "pg_isready -U atlas -d open_atlas"]
       interval: 5s
       timeout: 3s
       retries: 10
     networks:
-      - aladdin-net
+      - atlas-net
 
 volumes:
   redis_data:
@@ -166,5 +166,5 @@ volumes:
   ui_node_modules:
 
 networks:
-  aladdin-net:
+  atlas-net:
     driver: bridge

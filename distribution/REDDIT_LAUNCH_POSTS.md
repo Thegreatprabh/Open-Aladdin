@@ -1,4 +1,4 @@
-# Reddit Launch Posts — OPEN-ALADDIN
+# Reddit Launch Posts — OPEN-ATLAS
 
 Four posts, each written for that subreddit's actual culture. Rules that apply everywhere: no brigading, no
 cross-posting the same day (space them out), reply to every comment in the first few hours, and **do not** claim
@@ -14,7 +14,7 @@ Post these from your own Reddit account. Best window for US + India overlap: **7
 
 **Body:**
 
-Hey folks — I built [OPEN-ALADDIN](https://github.com/Thegreatprabh/Open-Aladdin), an open-source quant terminal for
+Hey folks — I built [OPEN-ATLAS](https://github.com/Thegreatprabh/Open-Atlas), an open-source quant terminal for
 Indian derivatives, and wanted to share it here first since it's made with NIFTY/BANKNIFTY in mind.
 
 What it does:
@@ -34,8 +34,8 @@ ultima, Heston calibration, gamma scalping, Kalman stat-arb). MIT licensed.
 Run it locally in 2 minutes:
 
 ```
-git clone https://github.com/Thegreatprabh/Open-Aladdin.git
-cd Open-Aladdin/apps/terminal-ui
+git clone https://github.com/Thegreatprabh/Open-Atlas.git
+cd Open-Atlas/apps/terminal-ui
 npm install && npm run dev
 ```
 
@@ -51,7 +51,7 @@ who actually trade 0DTE.
 
 **Body:**
 
-I've open-sourced [OPEN-ALADDIN](https://github.com/Thegreatprabh/Open-Aladdin) — a monorepo with a full trading
+I've open-sourced [OPEN-ATLAS](https://github.com/Thegreatprabh/Open-Atlas) — a monorepo with a full trading
 terminal that runs entirely in the browser against a built-in market simulator (GBM + Merton jump-diffusion, 240
 pre-seeded 1m candles, Level-2 book, tape).
 
@@ -76,11 +76,11 @@ Happy to get code review; the backtest engine and the Rust risk gate are where I
 
 ## r/quant
 
-**Title:** [OC] OPEN-ALADDIN — open-source terminal with 3D dealer-gamma analytics, BSM/Heston engine, Rust LOB
+**Title:** [OC] OPEN-ATLAS — open-source terminal with 3D dealer-gamma analytics, BSM/Heston engine, Rust LOB
 
 **Body:**
 
-[OPEN-ALADDIN](https://github.com/Thegreatprabh/Open-Aladdin) — an open-source quant terminal and research monorepo
+[OPEN-ATLAS](https://github.com/Thegreatprabh/Open-Atlas) — an open-source quant terminal and research monorepo
 I'm sharing for review.
 
 The quantitative core:
@@ -110,7 +110,7 @@ where a fresh pair of quant eyes would help most.
 
 **Body:**
 
-I wrote a small Rust matching engine as part of [OPEN-ALADDIN](https://github.com/Thegreatprabh/Open-Aladdin) and
+I wrote a small Rust matching engine as part of [OPEN-ATLAS](https://github.com/Thegreatprabh/Open-Atlas) and
 thought r/rust might enjoy tearing it apart.
 
 `core/matching-engine` contains:
@@ -126,4 +126,4 @@ The engine is consumed by a React terminal (paper trading against a simulator) a
 intentionally dependency-light so it's readable — happy to get feedback on the order-book data structures (BTreeMap
 vs intrusive, where the real latency wins are) and on whether the FIX parser should use a zero-copy approach.
 
-Code: [core/matching-engine](https://github.com/Thegreatprabh/Open-Aladdin/tree/main/core/matching-engine) — MIT.
+Code: [core/matching-engine](https://github.com/Thegreatprabh/Open-Atlas/tree/main/core/matching-engine) — MIT.

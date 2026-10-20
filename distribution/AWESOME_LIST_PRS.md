@@ -1,4 +1,4 @@
-# Awesome-List PR Kit — OPEN-ALADDIN
+# Awesome-List PR Kit — OPEN-ATLAS
 
 Ready-to-submit pull requests for curated awesome lists. Each block gives you: the target list, where the entry goes,
 the exact markdown line to add, and the `gh` CLI commands to fork, patch and open the PR.
@@ -15,7 +15,7 @@ the exact markdown line to add, and the `gh` CLI commands to fork, patch and ope
 **Add this line** (alphabetical order, near other open-source platforms):
 
 ```markdown
-- [OPEN-ALADDIN](https://github.com/Thegreatprabh/Open-Aladdin) - Open-source institutional quant terminal: React web terminal with live market simulator, 3D dealer gamma-exposure (GEX) surface, options chain with multi-leg payoff builder, Monte Carlo backtester, Rust matching engine and Python BSM/Heston analytics. (Python, Rust, TypeScript)
+- [OPEN-ATLAS](https://github.com/Thegreatprabh/Open-Atlas) - Open-source institutional quant terminal: React web terminal with live market simulator, 3D dealer gamma-exposure (GEX) surface, options chain with multi-leg payoff builder, Monte Carlo backtester, Rust matching engine and Python BSM/Heston analytics. (Python, Rust, TypeScript)
 ```
 
 **Commands:**
@@ -24,10 +24,10 @@ the exact markdown line to add, and the `gh` CLI commands to fork, patch and ope
 gh repo fork wilsonfreitas/awesome-quant --clone
 cd awesome-quant
 # edit README.md, add the line above in the Platforms section
-git checkout -b add-open-aladdin
-git add README.md && git commit -m "Add OPEN-ALADDIN quant terminal"
-git push origin add-open-aladdin
-gh pr create --title "Add OPEN-ALADDIN" --body "Adds OPEN-ALADDIN — an open-source quant terminal monorepo (React terminal + Rust matching engine + Python quant engine). Includes a live market-microstructure simulator, 3D gamma-exposure analytics, options payoff builder and a Monte Carlo backtester. MIT licensed, all components run from a fresh clone."
+git checkout -b add-open-atlas
+git add README.md && git commit -m "Add OPEN-ATLAS quant terminal"
+git push origin add-open-atlas
+gh pr create --title "Add OPEN-ATLAS" --body "Adds OPEN-ATLAS — an open-source quant terminal monorepo (React terminal + Rust matching engine + Python quant engine). Includes a live market-microstructure simulator, 3D gamma-exposure analytics, options payoff builder and a Monte Carlo backtester. MIT licensed, all components run from a fresh clone."
 ```
 
 ---
@@ -39,7 +39,7 @@ gh pr create --title "Add OPEN-ALADDIN" --body "Adds OPEN-ALADDIN — an open-so
 **Add this line:**
 
 ```markdown
-* [OPEN-ALADDIN](https://github.com/Thegreatprabh/Open-Aladdin) - Institutional quant terminal monorepo; its matching-engine core is a price-time-priority limit order book with iceberg orders, a FIX 4.4 parser and a SPAN-style risk gate in Rust (24 unit tests).
+* [OPEN-ATLAS](https://github.com/Thegreatprabh/Open-Atlas) - Institutional quant terminal monorepo; its matching-engine core is a price-time-priority limit order book with iceberg orders, a FIX 4.4 parser and a SPAN-style risk gate in Rust (24 unit tests).
 ```
 
 **Commands:**
@@ -48,10 +48,10 @@ gh pr create --title "Add OPEN-ALADDIN" --body "Adds OPEN-ALADDIN — an open-so
 gh repo fork rust-unofficial/awesome-rust --clone
 cd awesome-rust
 # edit README.md -> Applications -> Finance, add the line above
-git checkout -b add-open-aladdin
-git add README.md && git commit -m "Add OPEN-ALADDIN matching engine"
-git push origin add-open-aladdin
-gh pr create --title "Add OPEN-ALADDIN (Rust matching engine)" --body "OPEN-ALADDIN's core/matching-engine is a Rust price-time LOB with iceberg support, FIX 4.4 message parsing (with checksum validation) and a risk gate with margin checks and kill switch. cargo test: 24/24 passing."
+git checkout -b add-open-atlas
+git add README.md && git commit -m "Add OPEN-ATLAS matching engine"
+git push origin add-open-atlas
+gh pr create --title "Add OPEN-ATLAS (Rust matching engine)" --body "OPEN-ATLAS's core/matching-engine is a Rust price-time LOB with iceberg support, FIX 4.4 message parsing (with checksum validation) and a risk gate with margin checks and kill switch. cargo test: 24/24 passing."
 ```
 
 > Note: awesome-rust has strict inclusion rules (needs crates.io publication or notable usage). If the PR is declined
@@ -66,7 +66,7 @@ gh pr create --title "Add OPEN-ALADDIN (Rust matching engine)" --body "OPEN-ALAD
 **Add this line:**
 
 ```markdown
-- [OPEN-ALADDIN Terminal](https://github.com/Thegreatprabh/Open-Aladdin/tree/main/apps/terminal-ui) - Bloomberg-style quant trading terminal in React + TypeScript: live GBM/jump-diffusion market simulator, canvas candlesticks, 3D vol/GEX surface, options chain payoff builder, Monte Carlo backtester and a Ctrl+K command palette. No backend.
+- [OPEN-ATLAS Terminal](https://github.com/Thegreatprabh/Open-Atlas/tree/main/apps/terminal-ui) - Bloomberg-style quant trading terminal in React + TypeScript: live GBM/jump-diffusion market simulator, canvas candlesticks, 3D vol/GEX surface, options chain payoff builder, Monte Carlo backtester and a Ctrl+K command palette. No backend.
 ```
 
 **Commands:**
@@ -75,17 +75,17 @@ gh pr create --title "Add OPEN-ALADDIN (Rust matching engine)" --body "OPEN-ALAD
 gh repo fork enaqx/awesome-react --clone
 cd awesome-react
 # edit README.md -> React Apps section, add the line above
-git checkout -b add-open-aladdin
-git add README.md && git commit -m "Add OPEN-ALADDIN terminal"
-git push origin add-open-aladdin
-gh pr create --title "Add OPEN-ALADDIN terminal" --body "A full trading terminal built with React + TypeScript + Tailwind — live tick simulator, canvas charts, software-rendered 3D surface, paper-trading account with margin checks, command palette. Builds clean with tsc && vite build."
+git checkout -b add-open-atlas
+git add README.md && git commit -m "Add OPEN-ATLAS terminal"
+git push origin add-open-atlas
+gh pr create --title "Add OPEN-ATLAS terminal" --body "A full trading terminal built with React + TypeScript + Tailwind — live tick simulator, canvas charts, software-rendered 3D surface, paper-trading account with margin checks, command palette. Builds clean with tsc && vite build."
 ```
 
 ---
 
 ## 4. igorbarinov/awesome-blockchain-rust — weakest fit (optional)
 
-Honest note: OPEN-ALADDIN is a markets/quant project, not a blockchain project. The Rust matching engine is
+Honest note: OPEN-ATLAS is a markets/quant project, not a blockchain project. The Rust matching engine is
 general-purpose (any asset class), but this list is blockchain-focused, so a submission may be rejected as off-topic.
 Only submit if you frame it strictly as the matching-engine component — and accept a decline gracefully.
 
@@ -94,7 +94,7 @@ Only submit if you frame it strictly as the matching-engine component — and ac
 **Add this line:**
 
 ```markdown
-* [OPEN-ALADDIN matching engine](https://github.com/Thegreatprabh/Open-Aladdin/tree/main/core/matching-engine) - Asset-agnostic Rust limit order book (price-time priority, iceberg orders) with FIX 4.4 parsing and a SPAN-style risk gate.
+* [OPEN-ATLAS matching engine](https://github.com/Thegreatprabh/Open-Atlas/tree/main/core/matching-engine) - Asset-agnostic Rust limit order book (price-time priority, iceberg orders) with FIX 4.4 parsing and a SPAN-style risk gate.
 ```
 
 **Commands:**
@@ -102,11 +102,11 @@ Only submit if you frame it strictly as the matching-engine component — and ac
 ```bash
 gh repo fork igorbarinov/awesome-blockchain-rust --clone
 cd awesome-blockchain-rust
-git checkout -b add-open-aladdin-lob
+git checkout -b add-open-atlas-lob
 # add the line above in the matching-engine/exchange section if one exists
-git add README.md && git commit -m "Add OPEN-ALADDIN LOB"
-git push origin add-open-aladdin-lob
-gh pr create --title "Add OPEN-ALADDIN matching engine" --body "Asset-agnostic Rust LOB core with FIX 4.4 support. Happy to close if the maintainers consider it out of scope for a blockchain list."
+git add README.md && git commit -m "Add OPEN-ATLAS LOB"
+git push origin add-open-atlas-lob
+gh pr create --title "Add OPEN-ATLAS matching engine" --body "Asset-agnostic Rust LOB core with FIX 4.4 support. Happy to close if the maintainers consider it out of scope for a blockchain list."
 ```
 
 ---
