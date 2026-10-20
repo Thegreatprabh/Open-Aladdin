@@ -435,7 +435,8 @@ Every piece of market data in this repository carries a source stamp (`SIMULATED
   the brokers' official REST APIs — they have not been exercised against a live broker account from this repo.
 * **The FIX gateway has basic session security, not full session recovery.** It validates FIX framing
   (BeginString, BodyLength, CheckSum, duplicate fields, size limits), requires an authenticated Logon
-  (SenderCompID plus an optional shared password), tracks per-session sequence numbers, answers heartbeat /
+  (SenderCompID plus a shared password — fail-closed: no password configured means every Logon is
+  rejected, unless FIX_GATEWAY_DEV=1 is set for local development), tracks per-session sequence numbers, answers heartbeat /
   test-requests, caps connections and rate, and writes an audit log — then routes orders through the risk gate
   and the matching engine and reports real outcomes. It implements no sequence-gap recovery, resend,
   store-and-forward, or TLS, and must not be deployed as a production FIX session endpoint.
@@ -460,7 +461,7 @@ variables — never commit keys to the repo. Nothing in this project places real
 - **Wire the Rust engine into the terminal** (WASM build or a Node sidecar) so paper orders match on the real LOB
   instead of the TypeScript simulator. This is the known gap — until it lands, call the Rust core a tested library,
   not a hot path.
-- Live WebSocket ingestion from broker market-data APIs (Kite Connect, DhanHQ) into the terminal's simulator.
+- Live WebSocket ingestion from broker market-data APIs (Kite Connect, DhanHQ) — design ready in [docs/LIVE_DATA_PIPELINE.md](docs/LIVE_DATA_PIPELINE.md) (ingestion → normalizer → Redis → fan-out → LiveProvider, P1–P4 rollout); implementation pending.
 - Exchange calendar and corporate-action adjustments in the backtester.
 - More awesome-list entries and a hosted demo link.
 

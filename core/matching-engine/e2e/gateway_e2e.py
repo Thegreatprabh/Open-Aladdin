@@ -37,7 +37,7 @@ def recv_msgs(sock, buf, timeout=3.0):
 
 HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 proc = subprocess.Popen([os.path.join(HERE, "target/release/fix_gateway")],
-                        env={**os.environ, "FIX_GATEWAY_ADDR": "127.0.0.1:19101"},
+                        env={**os.environ, "FIX_GATEWAY_ADDR": "127.0.0.1:19101", "FIX_GATEWAY_DEV": "1"},
                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 try:
     time.sleep(1.2)
@@ -106,6 +106,23 @@ try:
     oks = [parse(x) for x in msgs if parse(x).get("150") == "0"]
     print("6) after garbage, valid order acked:", bool(oks))
     assert oks, msgs
+
+    # ── fail-closed: a bare instance (no password, no dev mode) rejects logon ──
+    bare = subprocess.Popen(
+        [os.path.join(HERE, "target/release/fix_gateway")], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        env={**os.environ, "FIX_GATEWAY_ADDR": "127.0.0.1:19102"},
+    )
+    try:
+        time.sleep(0.7)
+        bs = socket.create_connection(("127.0.0.1", 19102), timeout=5)
+        bs.sendall(frame([(35, "A"), (49, "TEST"), (56, "ATLAS"), (34, 1), (98, "0"), (108, "30")]).encode())
+        bmsgs, _ = recv_msgs(bs, "")
+        bm = parse(bmsgs[0]) if bmsgs else {}
+        print("7) fail-closed instance rejects logon:", bm.get("35"), "|", bm.get("58", "")[:45])
+        assert bm.get("35") == "3" and "fail-closed" in bm.get("58", ""), bmsgs
+        bs.close()
+    finally:
+        bare.terminate()
 
     print("E2E GATEWAY: ALL PASS")
 finally:

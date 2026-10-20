@@ -84,8 +84,38 @@ Baseline re-verified 2026-10-20 before changes: CI run #30 all-green on main
   tests cover Black-Scholes (same canonical vectors as the Python suite), the
   backtest engine (including prefix-invariance causality — no look-ahead — for all
   three strategies), GEX sign conventions, and the en-IN formatters. Order/P&L
-  reconciliation tests specifically remain a smaller follow-up.
+  reconciliation tests were CLOSED in Round 5 (below).
 - Docker end-to-end (`docker compose up`) could not be executed in the audit
   environment (no Docker daemon — rechecked 2026-10-20: no docker binary at all);
   services were verified natively instead. This is the one item that cannot be
   closed from this environment.
+
+## Round 5 — fail-closed gateway auth, ledger tests, pipeline design (2026-10-20)
+
+- **GW-3 — FIX gateway authentication is now fail-closed (fixed).** Previously a
+  gateway started without `FIX_GATEWAY_PASSWORD` accepted any Logon. Now the
+  Logon decision (`logon_decision`, unit-tested) rejects every Logon when no
+  password is configured, unless `FIX_GATEWAY_DEV=1` is set for local
+  development; a configured password is enforced in all modes. The startup
+  banner prints the active auth mode. Compose passes `FIX_GATEWAY_DEV`
+  explicitly (default empty = fail-closed) and `.env.example` documents the
+  policy. The socket E2E gained a fail-closed probe: a bare instance rejects
+  Logon with a SessionReject naming the policy. Still open by design: TLS
+  (the port is loopback-only in Compose) and resend/store-and-forward
+  recovery.
+- **FE-4 — order/P&L reconciliation tests (fixed).** The paper-account
+  accounting was extracted from `App.tsx` into the pure module
+  `src/engine/paperLedger.ts` (`planFill` / `applyFill` / `closePosition` /
+  `markPositions`), with the UI calling it unchanged in behavior. 11 tests
+  reconcile the ledger end-to-end: open → weighted-average → partial close
+  (realized P&L + pro-rata margin release), side flips, short-cover profit,
+  the margin gate (closing never needs margin), option lot scaling, BSM
+  mark-to-market, square-off cash reconciliation, and input immutability.
+  Frontend suite: 49 tests.
+- **AR-1 — live data pipeline DESIGN delivered** in
+  `docs/LIVE_DATA_PIPELINE.md`: ingestion service → normalizer → Redis →
+  WebSocket fan-out → `LiveProvider`, canonical event schema, security
+  boundaries (credentials never in the browser; read-only by construction),
+  daily-token and instrument-mapping operations, chaos/contract testing, and
+  a P1–P4 rollout. Implementation is not claimed; P1 needs nothing external,
+  P3 needs the account holder's broker API subscription and credentials.

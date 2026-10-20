@@ -7,8 +7,9 @@
 //! resting order by its original ClOrdID.
 //!
 //! Session scope: Logon (35=A) is required before any application
-//! message and is authenticated by SenderCompID plus an optional shared
-//! password (`FIX_GATEWAY_PASSWORD`, tag 554). Heartbeat, test-request
+//! message and is authenticated by SenderCompID plus a shared password
+//! (`FIX_GATEWAY_PASSWORD`, tag 554). Authentication is FAIL-CLOSED: with
+//! no password configured, logons are rejected unless `FIX_GATEWAY_DEV=1`. Heartbeat, test-request
 //! and logout are handled; inbound sequence numbers are tracked
 //! (duplicates close the session, gaps are audit-logged); outbound
 //! messages carry per-session sequence numbers; connections are capped
@@ -163,6 +164,33 @@ fn gateway_password() -> Option<String> {
         .filter(|p| !p.is_empty())
 }
 
+/// Local-development escape hatch. Production auth is FAIL-CLOSED: with no
+/// FIX_GATEWAY_PASSWORD configured, every Logon is rejected unless this is set.
+fn dev_mode() -> bool {
+    std::env::var("FIX_GATEWAY_DEV")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+}
+
+/// The Logon authorization decision, kept pure for unit tests.
+fn logon_decision(
+    expected: Option<&str>,
+    dev: bool,
+    provided_ok: bool,
+) -> Result<(), &'static str> {
+    match expected {
+        Some(_) => {
+            if provided_ok {
+                Ok(())
+            } else {
+                Err("authentication failed")
+            }
+        }
+        None if dev => Ok(()),
+        None => Err("server requires FIX_GATEWAY_PASSWORD (fail-closed)"),
+    }
+}
+
 fn password_ok(expected: Option<&str>, provided: Option<&str>) -> bool {
     match expected {
         None => true,
@@ -261,10 +289,12 @@ fn handle_message(state: &mut State, session: &mut Session, raw: &str) -> Vec<St
             if msg.get(56) != Some("ATLAS") {
                 return vec![session_reject(session, &msg, "unknown TargetCompID (56)")];
             }
-            if !password_ok(gateway_password().as_deref(), msg.get(554)) {
-                eprintln!("[audit] logon authentication FAILED for {sender}");
+            let expected = gateway_password();
+            let provided_ok = password_ok(expected.as_deref(), msg.get(554));
+            if let Err(why) = logon_decision(expected.as_deref(), dev_mode(), provided_ok) {
+                eprintln!("[audit] logon REJECTED for {sender}: {why}");
                 session.close = true;
-                return vec![session_reject(session, &msg, "authentication failed")];
+                return vec![session_reject(session, &msg, why)];
             }
             session.logged_on = true;
             session.sender = sender.clone();
@@ -601,6 +631,14 @@ fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind(&addr)?;
     println!("[gateway] OPEN-ATLAS FIX gateway listening on {addr}");
     println!(
+        "[gateway] auth mode: {}",
+        match (gateway_password().is_some(), dev_mode()) {
+            (true, _) => "password required (tag 554)",
+            (false, true) => "DEV MODE - open logon (FIX_GATEWAY_DEV=1)",
+            (false, false) => "FAIL-CLOSED - no FIX_GATEWAY_PASSWORD set, all logons rejected",
+        }
+    );
+    println!(
         "[gateway] session: logon auth + seq tracking; no resend recovery / no TLS; paper margin ₹{PAPER_MARGIN:.0}"
     );
     match gateway_password() {
@@ -701,6 +739,19 @@ mod tests {
     }
 
     #[test]
+    fn logon_is_fail_closed_without_password() {
+        // no password configured, no dev mode -> reject even a 'fine' logon
+        assert!(logon_decision(None, false, true).is_err());
+        // dev mode opens it (local only)
+        assert!(logon_decision(None, true, false).is_ok());
+        // password configured -> provided must match
+        assert!(logon_decision(Some("s3cret"), false, true).is_ok());
+        assert!(logon_decision(Some("s3cret"), false, false).is_err());
+        // dev mode does NOT bypass a configured password
+        assert!(logon_decision(Some("s3cret"), true, false).is_err());
+    }
+
+    #[test]
     fn password_policy() {
         assert!(password_ok(None, None));
         assert!(password_ok(None, Some("anything")));
@@ -711,6 +762,9 @@ mod tests {
 
     #[test]
     fn session_flow_routes_through_risk_and_book() {
+        // This exercises the trading flow, not auth: run it in dev mode
+        // (production default is fail-closed — see logon_decision).
+        std::env::set_var("FIX_GATEWAY_DEV", "1");
         let mut st = State::new();
         let mut sess = Session::new();
         // Order before Logon: session Reject, nothing reaches the book.

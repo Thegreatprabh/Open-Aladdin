@@ -41,9 +41,11 @@ services:
       - "127.0.0.1:9101:9101"
     environment:
       RUST_LOG: "info"
-      # Optional shared Logon password (tag 554). Set in .env for any
-      # deployment beyond a single developer machine.
+      # Shared Logon password (tag 554). The gateway is FAIL-CLOSED:
+      # no password set = every Logon rejected. FIX_GATEWAY_DEV=1 opens
+      # logons for local development ONLY — never in production.
       FIX_GATEWAY_PASSWORD: ${FIX_GATEWAY_PASSWORD:-}
+      FIX_GATEWAY_DEV: "${FIX_GATEWAY_DEV:-}"
     depends_on:
       - redis
     networks:

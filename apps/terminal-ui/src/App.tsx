@@ -9,11 +9,18 @@ import type {
   NewOrder,
   Order,
   Position,
-  Quote,
 } from './types/market';
 import { LOT_SIZES, RISK_FREE_RATE } from './types/market';
 import { MarketEngine } from './engine/tickSimulator';
 import { bsGreeks, bsPrice } from './engine/blackScholes';
+import {
+  applyFill,
+  closePosition,
+  markPositions,
+  planFill,
+  totalMarginUsed,
+  totalMtm,
+} from './engine/paperLedger';
 import { TerminalContext, type OrderResult, type TerminalCtx, type ViewId } from './state/TerminalContext';
 import HeaderTicker from './components/HeaderTicker';
 import SidebarNav from './components/SidebarNav';
@@ -35,40 +42,6 @@ interface AccountState {
   cash: number;
   positions: Position[];
   orders: Order[];
-}
-
-function posKey(p: {
-  symbol: string;
-  strike?: number;
-  expiry?: string;
-  optionType?: string;
-}): string {
-  return `${p.symbol}|${p.strike ?? ''}|${p.expiry ?? ''}|${p.optionType ?? ''}`;
-}
-
-/** Mark every position to market using current quotes / BSM for options. */
-function markPositions(positions: Position[], quotes: Quote[]): Position[] {
-  const qmap = new Map(quotes.map((q) => [q.symbol, q]));
-  return positions.map((p) => {
-    let ltp = p.ltp;
-    if (p.instrumentType === 'OPTION' && p.strike != null && p.optionType) {
-      const spot = qmap.get(p.underlying)?.price ?? 0;
-      const dte = Math.max((new Date(p.expiry ?? '').getTime() - Date.now()) / 86400000, 0.02);
-      ltp = bsPrice({
-        S: spot,
-        K: p.strike,
-        T: dte / 365,
-        r: RISK_FREE_RATE,
-        sigma: p.iv ?? 0.13,
-        type: p.optionType,
-      });
-    } else {
-      ltp = qmap.get(p.symbol)?.price ?? qmap.get(p.underlying)?.price ?? p.ltp;
-    }
-    const dir = p.side === 'LONG' ? 1 : -1;
-    const pnl = (ltp - p.avgPrice) * dir * p.qty * p.lotSize;
-    return { ...p, ltp, pnl, mtm: pnl };
-  });
 }
 
 export default function App() {
@@ -157,20 +130,11 @@ export default function App() {
       }
       if (!fill || fill <= 0) return { ok: false, reason: 'No live price for instrument' };
 
-      const key = posKey(o);
-      const existing = acct.positions.find((p) => posKey(p) === key);
-      const orderDir: 1 | -1 = o.side === 'BUY' ? 1 : -1;
-      const existingDir = existing ? (existing.side === 'LONG' ? 1 : -1) : 0;
-
-      // Margin: percentage of notional — options 15%, equity 20%.
-      const marginRate = o.instrumentType === 'OPTION' ? 0.15 : 0.2;
-      const sameDirection = !existing || existingDir === orderDir;
-      const closingQty = existing && !sameDirection ? Math.min(o.qty, existing.qty) : 0;
-      const openingQty = o.qty - closingQty;
-      const openingMargin = fill * openingQty * lot * marginRate;
-      if (openingMargin > acct.cash) {
-        return { ok: false, reason: `Insufficient margin: need ₹${Math.round(openingMargin).toLocaleString('en-IN')}` };
-      }
+      // Close/open split + margin pricing live in the pure ledger module
+      // (src/engine/paperLedger.ts), where they are unit-tested.
+      const planned = planFill(acct, o, fill, lot);
+      if (!planned.ok) return { ok: false, reason: planned.reason };
+      const plan = planned.plan;
 
       const order: Order = {
         id: `OA${++orderSeq}`,
@@ -181,7 +145,7 @@ export default function App() {
         type: o.orderType,
         status: 'FILLED',
         timestamp: engine.time,
-        marginUsed: openingMargin,
+        marginUsed: plan.openingMargin,
         instrumentType: o.instrumentType,
         strike: o.strike,
         expiry: o.expiry,
@@ -189,50 +153,12 @@ export default function App() {
       };
 
       setAccount((prev) => {
-        let cash = prev.cash;
-        let positions = prev.positions.map((p) => ({ ...p }));
-        const idx = positions.findIndex((p) => posKey(p) === key);
-
-        if (idx >= 0 && closingQty > 0) {
-          const p = positions[idx];
-          const dirP = p.side === 'LONG' ? 1 : -1;
-          const realized = (fill - p.avgPrice) * dirP * closingQty * p.lotSize;
-          const released = p.marginUsed * (closingQty / p.qty);
-          cash += released + realized;
-          p.qty -= closingQty;
-          p.marginUsed -= released;
-          if (p.qty <= 0) positions.splice(idx, 1);
-        }
-        if (openingQty > 0) {
-          cash -= openingMargin;
-          const j = positions.findIndex((p) => posKey(p) === key);
-          if (j >= 0) {
-            const p = positions[j];
-            p.avgPrice = (p.avgPrice * p.qty + fill * openingQty) / (p.qty + openingQty);
-            p.qty += openingQty;
-            p.marginUsed += openingMargin;
-          } else {
-            positions.push({
-              id: `POS${posSeq++}`,
-              symbol: o.symbol,
-              underlying: o.underlying,
-              side: orderDir === 1 ? 'LONG' : 'SHORT',
-              qty: openingQty,
-              lotSize: lot,
-              avgPrice: fill,
-              ltp: fill,
-              instrumentType: o.instrumentType,
-              strike: o.strike,
-              expiry: o.expiry,
-              optionType: o.optionType,
-              iv: o.iv,
-              mtm: 0,
-              pnl: 0,
-              marginUsed: openingMargin,
-            });
-          }
-        }
-        return { cash, positions, orders: [order, ...prev.orders].slice(0, 120) };
+        const applied = applyFill(prev, o, fill, lot, plan, () => `POS${posSeq++}`);
+        return {
+          cash: applied.cash,
+          positions: applied.positions,
+          orders: [order, ...prev.orders].slice(0, 120),
+        };
       });
       return { ok: true };
     },
@@ -261,9 +187,10 @@ export default function App() {
           expiry: pos.expiry,
           optionType: pos.optionType,
         };
+        const closed = closePosition(prev, pos);
         return {
-          cash: prev.cash + pos.marginUsed + pos.pnl,
-          positions: prev.positions.filter((x) => x.id !== id),
+          cash: closed.cash,
+          positions: closed.positions,
           orders: [closeOrder, ...prev.orders].slice(0, 120),
         };
       });
@@ -278,8 +205,8 @@ export default function App() {
   }, [squareOff]);
 
   // ── Derived: margin, MTM, net Greeks ────────────────────────────────────
-  const marginBlocked = account.positions.reduce((a, p) => a + p.marginUsed, 0);
-  const mtm = account.positions.reduce((a, p) => a + p.pnl, 0);
+  const marginBlocked = totalMarginUsed(account.positions);
+  const mtm = totalMtm(account.positions);
 
   const netGreeks: NetGreeks = useMemo(() => {
     const qmap = new Map(quotes.map((q) => [q.symbol, q]));
