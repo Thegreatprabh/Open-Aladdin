@@ -345,7 +345,7 @@ if __name__ == "__main__":
         exchange=bridge.EXCHANGE_NFO, tradingsymbol="NIFTY24DEC24300CE",
         transaction_type=bridge.TRANSACTION_TYPE_BUY, quantity=50,
         product=bridge.PRODUCT_NRML, order_type=bridge.ORDER_TYPE_LIMIT,
-        price=112.35, tag="open-aladdin")
+        price=112.35, tag="open-atlas")
     oid = res["order_id"]
     print(f"  Placed  : {oid}")
     print("  Payload :", json.dumps(res["request"]["payload"], indent=None))
