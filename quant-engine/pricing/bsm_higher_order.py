@@ -97,6 +97,12 @@ class BSMOption:
             raise ValueError("T must be positive")
         if sigma <= 0:
             raise ValueError("sigma must be positive")
+        if not all(math.isfinite(x) for x in (S, K, T, r, sigma, q)):
+            raise ValueError("all inputs must be finite")
+        if S <= 0:
+            raise ValueError("S must be positive")
+        if K <= 0:
+            raise ValueError("K must be positive")
         self.S, self.K, self.T = float(S), float(K), float(T)
         self.r, self.sigma, self.q = float(r), float(sigma), float(q)
         self.kind = kind

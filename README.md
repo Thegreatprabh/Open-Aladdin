@@ -17,7 +17,7 @@ browser), a **Python quant engine** (Black–Scholes–Merton analytics through 
 gamma-scalping and stat-arb strategies, broker bridges), and a **Rust matching engine** (price–time-priority limit order
 book, FIX 4.4 parser, percentage-of-notional risk gate).
 
-Be clear about what this is: **the hand-written core is ~11,400 lines** (table below). There is also a generator
+Be clear about what this is: **the hand-written core is ~12,400 lines** (table below). There is also a generator
 script that can expand the repo with ~59,000 additional lines — that output is template-generated strategy code plus
 synthetic tick CSVs, it is **not committed to this repo**, and you should treat it as scaffolding, not as the project's
 substance. The substance is the code listed under [What's actually in here](#whats-actually-in-here).
@@ -43,6 +43,7 @@ Everything worth finding, in one place:
 | 50k-line expansion generator | [`scripts/generate_50k_monorepo.py`](https://github.com/Thegreatprabh/Open-Atlas/blob/main/scripts/generate_50k_monorepo.py) |
 | Demo screenshots | [`assets/demo/`](https://github.com/Thegreatprabh/Open-Atlas/tree/main/assets/demo) |
 | Math reference (BSM / GEX / margin) | [Quantitative core](#quantitative-core) |
+| Engineering audit & issue register | [`docs/ISSUE_REGISTER.md`](https://github.com/Thegreatprabh/Open-Atlas/blob/main/docs/ISSUE_REGISTER.md) |
 | Report a bug / ask a question | <https://github.com/Thegreatprabh/Open-Atlas/issues> |
 
 ---
@@ -80,9 +81,9 @@ Hand-written code only — generator output excluded:
 
 | Module | Lines | What it is | How it's verified |
 |---|---|---|---|
-| `apps/terminal-ui/src` | ~4,300 | React + TS terminal, 7 views, 4 quant engines | `npm run build` (tsc + vite) in CI |
-| `core/matching-engine/src` + `examples/` | ~1,470 | Rust LOB, FIX 4.4 parser, risk gate, bench | `cargo test` 24/24 in CI |
-| `quant-engine` | ~1,660 | BSM Greeks, Heston, 2 strategies, 2 broker bridges | every module executed in CI |
+| `apps/terminal-ui/src` | ~4,400 | React + TS terminal, 7 views, 4 quant engines | `npm run build` (tsc + vite) in CI |
+| `core/matching-engine/src` + `examples/` | ~2,200 | Rust LOB, FIX 4.4 parser, risk gate, FIX gateway binary, bench | `cargo test` 35/35 + gateway E2E in CI |
+| `quant-engine` | ~1,700 | BSM Greeks, Heston, 2 strategies, 2 broker bridges, validated API server | modules executed + BSM correctness suite in CI |
 | `scripts` | ~4,000 | 50k generator only (verified run: 59,251 lines / 126 files) | generator self-verifies ≥50k lines |
 
 The terminal's live simulation runs on the **TypeScript engine in the browser**. The Rust engine and the Python engine
@@ -411,9 +412,36 @@ flowchart TB
 ```
 
 **How it's wired today, honestly:** the terminal is self-contained — it runs on its own TypeScript market simulator
-in the browser. The Rust matching engine is a standalone library (verified by tests + the benchmark above) that is
-*not yet* connected to the UI; wiring it in via a WASM or Node binding is the first Roadmap item. The Python engine
-runs standalone too. Nothing in this diagram talks to a real exchange.
+in the browser. The Rust crate also ships a real FIX gateway binary (`src/bin/fix_gateway.rs`) that wires the three
+pieces together — parse → risk gate → order book → ExecutionReports from actual engine state, verified end-to-end
+(`core/matching-engine/e2e/gateway_e2e.py`) — but the *terminal UI* is not connected to it yet; wiring the UI in via
+a WASM or Node binding is the first Roadmap item. The Python engine runs standalone too. Nothing in this diagram
+talks to a real exchange.
+
+---
+
+## Operating modes & trust boundaries
+
+Every piece of market data in this repository carries a source stamp (`SIMULATED` / `HISTORICAL` / `LIVE`):
+
+* **SIMULATED is the only mode that exists today.** All prices, books, candles, backtests and broker payloads in
+  the terminal are generated locally by seeded simulators and are labelled as such (header badge, per-payload SIM
+  tags in the Broker Bridge). No live market-data provider is connected, and nothing here should be mistaken for
+  a live feed.
+* **The Broker Bridge never connects to a broker.** Its connection lifecycle ends at a clearly-labelled
+  SIMULATED state; there is no code path in the browser that opens a broker socket, transmits a credential, or
+  reports a real fill. Real broker sessions belong to the backend Python bridges
+  (`quant-engine/brokers/`), which read credentials from the environment only and are paper-mode wrappers around
+  the brokers' official REST APIs — they have not been exercised against a live broker account from this repo.
+* **The FIX gateway is application-level, not a session layer.** It validates FIX framing (BeginString,
+  BodyLength, CheckSum, duplicate fields, size limits), routes orders through the risk gate and the matching
+  engine, and reports real outcomes — but it implements no sequence-gap recovery, resend, or store-and-forward,
+  and must not be deployed as a production FIX session endpoint.
+* **Margin figures are percentage-of-notional estimates** (see *Margin model* below), never exchange SPAN.
+* **The audit trail** for the engineering hardening pass — every issue found in the actual source, its severity,
+  and the regression evidence for its fix — lives in [`docs/ISSUE_REGISTER.md`](docs/ISSUE_REGISTER.md), including
+  an explicit list of what remains unverified (no Docker daemon end-to-end run, no frontend unit-test runner yet,
+  no live broker sandbox test).
 
 ---
 

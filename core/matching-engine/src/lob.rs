@@ -160,6 +160,8 @@ pub enum BookError {
     DuplicateOrder(OrderId),
     #[error("order quantity must be positive")]
     InvalidQuantity,
+    #[error("order price must be positive, got {0} ticks")]
+    InvalidPrice(Price),
 }
 
 /// All resting orders at one price, in arrival (FIFO) order.
@@ -266,6 +268,9 @@ impl OrderBook {
         if taker.qty == 0 {
             return Err(BookError::InvalidQuantity);
         }
+        if taker.price <= 0 {
+            return Err(BookError::InvalidPrice(taker.price));
+        }
         if self.index.contains_key(&taker.id) {
             return Err(BookError::DuplicateOrder(taker.id));
         }
@@ -294,13 +299,19 @@ impl OrderBook {
                 .expect("best price level must exist");
 
                 while taker.remaining() > 0 {
-                    let Some(mut maker) = level.queue.pop_front() else { break };
+                    let Some(mut maker) = level.queue.pop_front() else {
+                        break;
+                    };
                     let visible_before = maker.visible_qty();
                     let qty = taker.remaining().min(visible_before);
                     if qty == 0 {
-                        // Defensive: a zero-visible maker must never spin.
-                        level.queue.push_front(maker);
-                        break;
+                        // A resting order with zero visible quantity can
+                        // never trade. Purge it (and its index entry via
+                        // `filled_makers`) instead of re-queueing it — the
+                        // old push-front behaviour could spin this matcher
+                        // loop forever.
+                        filled_makers.push(maker.id);
+                        continue;
                     }
                     maker.filled_qty += qty;
                     taker.filled_qty += qty;
@@ -401,6 +412,17 @@ impl OrderBook {
             .ok_or(BookError::OrderNotFound(id))?
             .clone();
 
+        // Amending the total quantity down to (or below) what has already
+        // executed completes the order: cancel the remainder outright. This
+        // also covers amend-to-zero, which must never leave a zero-quantity
+        // order resting in the book.
+        if let Some(q) = new_qty {
+            if q <= current.filled_qty {
+                self.remove_order(id);
+                return Ok(Vec::new());
+            }
+        }
+
         let price_changed = new_price.map(|p| p != price).unwrap_or(false);
         let qty_increase = new_qty.map(|q| q > current.qty).unwrap_or(false);
 
@@ -436,7 +458,9 @@ impl OrderBook {
     /// Aggregated depth snapshot for one side, best prices first, up to
     /// `levels` price levels.
     pub fn depth(&self, side: Side, levels: usize) -> Vec<LevelSnapshot> {
-        let mut out = Vec::with_capacity(levels);
+        // Cap the pre-allocation: an unbounded `levels` (e.g. usize::MAX)
+        // would otherwise panic on capacity overflow.
+        let mut out = Vec::with_capacity(levels.min(1024));
         match side {
             Side::Bid => {
                 for (price, level) in self.bids.iter().rev().take(levels) {
@@ -613,12 +637,153 @@ mod tests {
     fn depth_snapshot_is_best_first_and_capped() {
         let mut book = OrderBook::new();
         for i in 0..12u64 {
-            book.insert_order(bid(i + 1, 9_900 - (i as i64) * 5, 10)).unwrap();
+            book.insert_order(bid(i + 1, 9_900 - (i as i64) * 5, 10))
+                .unwrap();
         }
         let d = book.depth(Side::Bid, 10);
         assert_eq!(d.len(), 10);
         assert_eq!(d[0].price, 9_900);
         assert!(d.windows(2).all(|w| w[0].price > w[1].price));
+    }
+
+    #[test]
+    fn non_positive_price_rejected() {
+        let mut book = OrderBook::new();
+        assert_eq!(
+            book.insert_order(bid(1, 0, 10)),
+            Err(BookError::InvalidPrice(0))
+        );
+        assert_eq!(
+            book.insert_order(ask(2, -500, 10)),
+            Err(BookError::InvalidPrice(-500))
+        );
+        assert_eq!(book.open_order_count(), 0);
+    }
+
+    #[test]
+    fn amend_to_zero_removes_order_and_book_stays_matchable() {
+        let mut book = OrderBook::new();
+        book.insert_order(bid(1, 10_000, 10)).unwrap();
+        let trades = book.amend_order(1, None, Some(0)).unwrap();
+        assert!(trades.is_empty());
+        assert_eq!(book.open_order_count(), 0);
+        assert_eq!(book.best_bid(), None);
+        // The book must still match normally afterwards (no stuck level).
+        book.insert_order(ask(2, 10_000, 5)).unwrap();
+        let trades = book.insert_order(bid(3, 10_000, 5)).unwrap();
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0].qty, 5);
+    }
+
+    #[test]
+    fn amend_down_to_filled_qty_completes_order() {
+        let mut book = OrderBook::new();
+        book.insert_order(ask(1, 10_000, 10)).unwrap();
+        let trades = book.insert_order(bid(2, 10_000, 4)).unwrap();
+        assert_eq!(trades[0].qty, 4);
+        // Maker 1 has filled 4 of 10; amend its total down to 4 -> done.
+        let trades = book.amend_order(1, None, Some(4)).unwrap();
+        assert!(trades.is_empty());
+        assert_eq!(book.open_order_count(), 0);
+    }
+
+    struct Lcg(u64);
+    impl Lcg {
+        fn next(&mut self) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            self.0 >> 11
+        }
+    }
+
+    #[test]
+    fn randomized_invariants_hold() {
+        use std::collections::HashMap;
+        let mut book = OrderBook::new();
+        let mut rng = Lcg(0x1234_5678_9abc_def0);
+        let mut next_id: OrderId = 1;
+        let mut placed: HashMap<OrderId, Qty> = HashMap::new();
+        let mut fills: HashMap<OrderId, Qty> = HashMap::new();
+
+        for step in 0..3000 {
+            match rng.next() % 10 {
+                0..=5 => {
+                    let side = if rng.next().is_multiple_of(2) {
+                        Side::Bid
+                    } else {
+                        Side::Ask
+                    };
+                    let price = 9_500 + (rng.next() % 1000) as Price;
+                    let qty = 1 + rng.next() % 50;
+                    let order = if rng.next().is_multiple_of(5) {
+                        Order::iceberg(next_id, side, price, qty, 1 + rng.next() % 10, next_id)
+                    } else {
+                        Order::limit(next_id, side, price, qty, next_id)
+                    };
+                    placed.insert(next_id, qty);
+                    if let Ok(trades) = book.insert_order(order) {
+                        for t in &trades {
+                            *fills.entry(t.taker_id).or_default() += t.qty;
+                            *fills.entry(t.maker_id).or_default() += t.qty;
+                        }
+                    }
+                    next_id += 1;
+                }
+                6..=7 => {
+                    if next_id > 1 {
+                        let id = 1 + rng.next() % (next_id - 1);
+                        let _ = book.cancel_order(id);
+                    }
+                }
+                _ => {
+                    if next_id > 1 {
+                        let id = 1 + rng.next() % (next_id - 1);
+                        let q = rng.next() % 60;
+                        if book.amend_order(id, None, Some(q)).is_ok() {
+                            // Effective total after an amend is
+                            // max(requested, already-filled): amending down
+                            // to/below the filled quantity completes the
+                            // order at its filled quantity.
+                            let eff = q.max(fills.get(&id).copied().unwrap_or(0));
+                            placed.insert(id, eff);
+                        }
+                    }
+                }
+            }
+
+            // Invariant 1: the resting book is never crossed.
+            if let (Some(b), Some(a)) = (book.best_bid(), book.best_ask()) {
+                assert!(b < a, "step {step}: crossed book, bid {b} >= ask {a}");
+            }
+            // Invariant 2: index size equals the number of resting orders.
+            let resting: usize = book
+                .depth(Side::Bid, usize::MAX)
+                .iter()
+                .map(|l| l.order_count)
+                .sum::<usize>()
+                + book
+                    .depth(Side::Ask, usize::MAX)
+                    .iter()
+                    .map(|l| l.order_count)
+                    .sum::<usize>();
+            assert_eq!(resting, book.open_order_count(), "step {step}");
+            // Invariant 3: no order is ever filled beyond its (current) qty.
+            for (id, f) in &fills {
+                assert!(
+                    *f <= placed[id],
+                    "step {step}: order {id} filled {f} > qty {}",
+                    placed[id]
+                );
+            }
+            // Invariant 4: every resting order still has quantity to trade.
+            for side in [Side::Bid, Side::Ask] {
+                for level in book.depth(side, usize::MAX) {
+                    assert!(level.total_qty > 0, "step {step}: empty level rests");
+                }
+            }
+        }
     }
 
     #[test]

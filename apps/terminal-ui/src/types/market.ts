@@ -1,6 +1,14 @@
 // OPEN-ATLAS — strict market data & trading type definitions
 
 export type Side = 'BUY' | 'SELL';
+
+/**
+ * Provenance of every market-data object. The terminal currently ships with
+ * exactly one producer — the seeded simulator — so everything is stamped
+ * SIMULATED. HISTORICAL and LIVE exist so a future authorized feed can be
+ * integrated without ever letting its data masquerade as another mode.
+ */
+export type DataSource = 'SIMULATED' | 'HISTORICAL' | 'LIVE';
 export type PositionSide = 'LONG' | 'SHORT';
 export type OptionType = 'CE' | 'PE';
 export type OrderType = 'MARKET' | 'LIMIT';
@@ -31,6 +39,7 @@ export interface BookLevel {
 
 export interface Level2Book {
   symbol: string;
+  source: DataSource;
   bids: BookLevel[];
   asks: BookLevel[];
   spread: number;
@@ -39,6 +48,7 @@ export interface Level2Book {
 
 export interface Tick {
   symbol: string;
+  source: DataSource;
   price: number;
   qty: number;
   side: Side;
@@ -47,6 +57,7 @@ export interface Tick {
 
 export interface Quote {
   symbol: string;
+  source: DataSource;
   label: string;
   price: number;
   prevPrice: number;
@@ -60,6 +71,7 @@ export interface Quote {
 }
 
 export interface Candle {
+  source: DataSource;
   t: number; // epoch ms
   o: number;
   h: number;
@@ -173,6 +185,20 @@ export interface BacktestResult {
 
 export type BrokerId = 'zerodha' | 'dhan' | 'angelone' | 'neostox';
 
+/**
+ * Broker connection lifecycle. CONNECTED is deliberately absent: the
+ * browser bridge never completes a real broker handshake, so the only
+ * reachable "up" state is SIMULATED. Real sessions belong to the backend
+ * Python bridges (official login flow), never to this UI.
+ */
+export type BrokerConnState =
+  | 'DISCONNECTED'
+  | 'CONNECTING'
+  | 'AUTHENTICATING'
+  | 'SIMULATED'
+  | 'ERROR'
+  | 'DISCONNECTING';
+
 export interface BrokerConfig {
   broker: BrokerId;
   name: string;
@@ -180,8 +206,7 @@ export interface BrokerConfig {
   apiSecret: string;
   accessToken: string;
   wsUrl: string;
-  connected: boolean;
-  latencyMs: number;
+  state: BrokerConnState;
 }
 
 export const BROKER_META: Record<BrokerId, { name: string; wsUrl: string; restUrl: string }> = {

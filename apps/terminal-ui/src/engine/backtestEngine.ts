@@ -44,6 +44,7 @@ export function generateOHLCV(
     const ret = (mu - 0.5 * sigma * sigma) * dt + sigma * Math.sqrt(dt) * gauss(rng);
     price = Math.max(price * Math.exp(ret), 1);
     candles.push({
+      source: 'SIMULATED',
       t: t0 + i * 86400000,
       o: open,
       h: Math.max(open, price) * (1 + 0.004 * rng()),

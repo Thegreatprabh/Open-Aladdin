@@ -1,0 +1,41 @@
+# OPEN-ATLAS — Issue Register
+
+Source-backed audit performed 2026-10-20 against the actual code (not the README).
+Status values: Open / In Progress / Fixed / Verified / Blocked. "Verified" = fix landed
+and the listed regression test/command was actually run.
+
+| ID | Sev | Location | Issue | Root cause | Fix | Regression evidence | Status |
+|---|---|---|---|---|---|---|---|
+| RG-1 | Critical | `core/matching-engine/src/risk_gate.rs` `check_order` | NaN price/reference/underlying/margin silently passes **every** quantitative check (`NaN > x` is always false); negative prices and zero qty also pass | No input validation before arithmetic | Validate finiteness/positivity up front; structured `RiskError::InvalidInput` / `ZeroQuantity`; validated config via `RiskGate::try_new` | New unit tests: NaN/inf/negative/zero cases all rejected | Verified |
+| RG-2 | High | `risk_gate.rs` `margin_estimate` | `price × qty` can overflow to `inf`, and `inf > available` logic is unexamined | f64 arithmetic without finite checks | Finite-check the estimate result inside `check_order`; reject non-finite computed values | Overflow test (huge price × qty) | Verified |
+| LOB-1 | High | `core/matching-engine/src/lob.rs` `amend_order` + matcher loop | Amending qty to 0 leaves a zero-quantity order resting; the matcher's defensive branch pushes a zero-visible maker back to the front and the outer loop can spin forever | Amend allowed `qty = filled_qty = 0`; matcher assumed visible > 0 for resting orders | Amend to ≤ filled removes the order (fully-executed semantics); `insert_order` rejects non-positive prices; matcher drops zero-visible makers instead of re-queueing them | Tests: amend-to-zero completes; zero/negative price rejected; randomized invariant test | Verified |
+| LOB-2 | Medium | `lob.rs` | No randomized/property coverage of book invariants | Only example-based tests existed | Deterministic seeded random-op test asserting: book never crossed, fills never exceed qty, index size == resting orders, depth totals consistent | `randomized_invariants_hold` test | Verified |
+| FIX-1 | Medium | `core/matching-engine/src/fix_parser.rs` `parse` | Duplicate tags silently overwrite earlier values in the index (`HashMap::insert`), so a message with two `44=` fields validates against the last one | No duplicate detection | Reject duplicates of any tag with `FixError::DuplicateField` | Test: duplicated field rejected; round-trip tests unchanged | Verified |
+| FIX-2 | Low | `fix_parser.rs` | No message-size bound — unbounded input to parser | Missing limit | `MAX_MESSAGE_BYTES` (64 KiB) enforced in `parse` | Oversized-input test | Verified |
+| GW-1 | Critical | `docker-compose.yml` (inline `fix_gateway.rs`) + crate | The shipped gateway answers **every** NewOrderSingle with a hard-coded ExecutionReport (`EXEC-1`/`ORD-1`, zero quantities) — a fabricated fill that never touches the risk gate or the book | Demo stub embedded in Compose | Real gateway binary in the crate (`src/bin/fix_gateway.rs`): parse → validate fields → risk gate → LOB → ExecutionReport from actual engine state; risk/order rejections return `150=8` reports; Compose builds the crate binary | Native E2E: socket session — crossing order fills at maker price, oversized order rejected by risk gate, malformed message gets no fill | Verified |
+| SEC-1 | High | `docker-compose.yml` | Hard-coded database password (`POSTGRES_PASSWORD: atlas`) committed in the repo | Convenience default | Password from `${POSTGRES_PASSWORD}` env (`.env`, gitignored); `.env.example` documents it; Compose fails fast if unset | `docker compose config` parse / file grep shows no literal password | Verified |
+| SEC-2 | Medium | `docker-compose.yml` | Postgres (5432) and Redis (6379) ports published to the host | Dev convenience | Ports removed; services reachable only on the internal `atlas-net` network | Compose diff | Verified |
+| SEC-3 | Medium | `docker-compose.yml` quant `api_server.py` | No input validation: `vol<=0`, `ttm<=0`, `spot/strike<=0` cause 500s / NaN results; service runs as root | Inline demo server | Pydantic field constraints (`gt=0`) + explicit finite checks; non-root `USER` in the image | Local uvicorn run: invalid payloads → 422, valid BSM vector → known price | Verified |
+| BB-1 | Critical | `apps/terminal-ui/src/components/views/BrokerBridgeView.tsx` | Fake handshake: any API key "connects" in 650 ms, tab badge says **● LIVE**, inspector titled "LIVE", latency invented, FIX test order returns a fabricated ExecReport whose text claims FILLED while its fields say New | Simulation presented as a live integration | Explicit state machine `DISCONNECTED → CONNECTING → SIMULATED` (+`ERROR`, `DISCONNECTING`); the demo stream is labelled SIMULATED everywhere; LIVE mode is a separate, disabled path that explains the real backend login flow; no invented latency (shows "—"); test-order ack fields and text agree and are marked simulated | `npm run build`; UI text grep: no "LIVE" claim attached to the simulated path | Verified |
+| BB-2 | Medium | `BrokerBridgeView.tsx` | Switching broker tabs keeps the previous broker's stream/subscription state | Feed/effect keyed loosely | Feed is tagged per broker; switching tabs clears the simulated feed and requires a fresh simulated connect | Build + code review | Verified |
+| MD-1 | High | `apps/terminal-ui/src/engine/tickSimulator.ts`, `types/market.ts`, `HeaderTicker.tsx` | Quotes/candles/ticks/books carry a timestamp but **no source**, and nothing in the header marks the feed as simulated; the Level-2 book is re-randomized on every render (two reads at the same instant disagree) | Simulator predates the mode architecture | `DataSource` type stamped on Quote/Candle/Tick/Level2Book (`SIMULATED`); header shows a SIMULATED badge; book generation is deterministic per (price, tick) so repeated reads agree | Build; determinism covered by construction (hash-seeded) | Verified |
+| MD-2 | Medium | `tickSimulator.ts` | No staleness concept: paused feed looks identical to a live one | Missing age tracking | `MarketEngine.feedAgeMs()` + `isStale()` helper; header badge turns STALE when paused or age exceeds threshold | Build | Verified |
+| QE-1 | Medium | `quant-engine/pricing/bsm_higher_order.py` | No independent verification of prices/Greeks in-repo | Tests were smoke-executions only | `quant-engine/tests/test_bsm_correctness.py`: put–call parity, price bounds, monotonicity, IV round-trip, textbook reference vector (Hull) | Script executed: all checks pass | Verified |
+| DOC-1 | Medium | `README.md` | No consolidated statement of operating modes / what's simulated / limitations | Docs grew feature-first | "Operating modes & limitations" section: SIMULATED default, no live market data, broker bridges are backend-only paper wrappers, FIX gateway scope (application-level, no session layer) | README diff | Verified |
+| CI-1 | Low | `.github/workflows/ci.yml` | No rustfmt/clippy gates; Python job doesn't run the correctness tests | Initial CI scope | Add fmt + clippy steps and the BSM correctness test to the Python job (workflow file updated via web UI — the GitHub App cannot write workflow files) | CI run on the fix commits | In Progress |
+
+## Known limitations (explicitly NOT fixed in this pass)
+
+- **No live market data.** No authorized live provider is connected; every price in the
+  terminal is simulated. `HISTORICAL` mode exists only as an interface concept.
+- **FIX gateway is application-level**: it validates framing/checksum/body-length and
+  routes orders through risk + matching, but it does not implement a full FIX session
+  layer (sequence-gap recovery, resend requests, store-and-forward). It must not be
+  described as a production FIX session.
+- **Broker bridges** (Python) remain paper-mode wrappers around official REST APIs and
+  have never been exercised against a real broker sandbox in this repo's CI.
+- **Frontend financial-calculation unit tests** (order/P&L reconciliation) are not yet a
+  test suite — the terminal has no test runner configured. Register stays honest: this
+  is the largest remaining test gap (see Phase 8 of the transformation brief).
+- Docker end-to-end (`docker compose up`) could not be executed in the audit
+  environment (no Docker daemon); services were verified natively instead.

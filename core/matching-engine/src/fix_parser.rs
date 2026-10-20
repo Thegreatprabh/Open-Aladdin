@@ -21,6 +21,9 @@ use thiserror::Error;
 
 /// FIX field delimiter (Start of Header, 0x01).
 pub const SOH: char = '\u{1}';
+/// Maximum accepted message size on the wire. Real FIX messages are small;
+/// anything larger is treated as hostile or corrupt and rejected unread.
+pub const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 /// BeginString for FIX 4.4 sessions.
 pub const BEGIN_STRING: &str = "FIX.4.4";
 
@@ -41,6 +44,10 @@ pub enum FixError {
     InvalidBodyLength { stated: usize, computed: usize },
     #[error("field {tag} is not a valid number: {value:?}")]
     InvalidNumber { tag: u32, value: String },
+    #[error("duplicate field: tag {0} appears more than once")]
+    DuplicateField(u32),
+    #[error("message too large: {size} bytes (limit {max})")]
+    MessageTooLarge { size: usize, max: usize },
 }
 
 /// Sum of all bytes modulo 256, formatted as a zero-padded 3-digit string.
@@ -62,6 +69,12 @@ impl FixMessage {
     /// Validates BeginString, BodyLength (tag 9) and CheckSum (tag 10).
     /// A single trailing SOH after the checksum is optional.
     pub fn parse(raw: &str) -> Result<Self, FixError> {
+        if raw.len() > MAX_MESSAGE_BYTES {
+            return Err(FixError::MessageTooLarge {
+                size: raw.len(),
+                max: MAX_MESSAGE_BYTES,
+            });
+        }
         let raw = raw.trim_end_matches(SOH);
         if raw.is_empty() {
             return Err(FixError::MalformedField(raw.to_string()));
@@ -77,6 +90,12 @@ impl FixMessage {
             let tag: u32 = tag
                 .parse()
                 .map_err(|_| FixError::InvalidTag(tag.to_string()))?;
+            // This parser models flat messages (no repeating groups): a tag
+            // appearing twice is ambiguous — previously the second value
+            // silently overwrote the first in the lookup index.
+            if index.contains_key(&tag) {
+                return Err(FixError::DuplicateField(tag));
+            }
             fields.push((tag, value.to_string()));
             index.insert(tag, value.to_string());
         }
@@ -336,7 +355,9 @@ pub fn execution_report(
         .set(6, format!("{avg_px}"))
         .set(60, transact_time);
     if last_qty > 0.0 {
-        b = b.set(32, format!("{last_qty}")).set(31, format!("{last_px}"));
+        b = b
+            .set(32, format!("{last_qty}"))
+            .set(31, format!("{last_px}"));
     }
     if let Some(v) = orig.cl_ord_id() {
         b = b.set(11, v);
@@ -355,7 +376,12 @@ pub fn execution_report(
     // caller's job in a full session layer; keep values for traceability).
     if let (Some(s), Some(t), Some(ts)) = (orig.get(56), orig.get(49), orig.get(52)) {
         let (s, t, ts) = (s.to_string(), t.to_string(), ts.to_string());
-        b = b.header(&s, &t, orig.get_i64(34).ok().flatten().unwrap_or(0) as u64 + 1, &ts);
+        b = b.header(
+            &s,
+            &t,
+            orig.get_i64(34).ok().flatten().unwrap_or(0) as u64 + 1,
+            &ts,
+        );
     }
     b.build()
 }
@@ -419,11 +445,7 @@ mod tests {
         let raw = sample_order().replace("FIX.4.4", "FIX.4.2");
         // Fix checksum so we reach the version check deterministically.
         let soh10 = raw.rfind(&format!("{SOH}10=")).unwrap();
-        let fixed = format!(
-            "{}10={}",
-            &raw[..=soh10],
-            compute_checksum(&raw[..=soh10])
-        );
+        let fixed = format!("{}10={}", &raw[..=soh10], compute_checksum(&raw[..=soh10]));
         assert!(matches!(
             FixMessage::parse(&fixed),
             Err(FixError::UnsupportedVersion(_))
@@ -453,6 +475,34 @@ mod tests {
         assert_eq!(msg.get(14), Some("50"));
         assert_eq!(msg.get(151), Some("0")); // fully filled -> no leaves qty
         assert_eq!(msg.cl_ord_id(), Some("ORD-1001"));
+    }
+
+    #[test]
+    fn duplicate_fields_are_rejected() {
+        let raw = sample_order();
+        // Inject a second Price (44) field before the checksum.
+        let soh10 = raw.rfind(&format!("{SOH}10=")).unwrap();
+        let dup = format!("{}44=9999.0{}{}", &raw[..=soh10], SOH, &raw[soh10 + 1..]);
+        assert!(matches!(
+            FixMessage::parse(&dup),
+            Err(FixError::DuplicateField(44))
+        ));
+    }
+
+    #[test]
+    fn oversized_message_is_rejected() {
+        let raw = "x".repeat(MAX_MESSAGE_BYTES + 1);
+        assert!(matches!(
+            FixMessage::parse(&raw),
+            Err(FixError::MessageTooLarge { .. })
+        ));
+    }
+
+    #[test]
+    fn truncated_message_is_rejected() {
+        let raw = sample_order();
+        let truncated = &raw[..raw.len() / 2];
+        assert!(FixMessage::parse(truncated).is_err());
     }
 
     #[test]

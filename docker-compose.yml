@@ -6,8 +6,10 @@
 #   terminal-ui      React/Vite terminal            -> http://localhost:5173
 #   matching-engine  Rust FIX 4.4 gateway + LOB     -> tcp  localhost:9101
 #   quant-engine     Python quant / pricing API     -> http://localhost:9102
-#   redis            Order/quote state cache        -> localhost:6379
-#   timescaledb      Tick & trade persistence       -> localhost:5432
+#   redis            Order/quote state cache        -> internal network only
+#   timescaledb      Tick & trade persistence       -> internal network only
+#
+# Setup: cp .env.example .env and set a real POSTGRES_PASSWORD first.
 
 services:
   terminal-ui:
@@ -31,42 +33,7 @@ services:
   matching-engine:
     build:
       context: ./core/matching-engine
-      dockerfile_inline: |
-        # syntax=docker/dockerfile:1
-        FROM rust:1.78-bookworm AS builder
-        WORKDIR /build
-        COPY . .
-        RUN mkdir -p src/bin && cat > src/bin/fix_gateway.rs <<'EOF'
-        use open_atlas_matching_engine::fix_parser::{execution_report, FixMessage};
-        use std::io::{BufRead, BufReader, Write};
-        use std::net::TcpListener;
-        fn main() -> std::io::Result<()> {
-            let listener = TcpListener::bind("0.0.0.0:9101")?;
-            println!("FIX gateway listening on 0.0.0.0:9101");
-            for stream in listener.incoming() {
-                let mut stream = stream?;
-                let mut reader = BufReader::new(stream.try_clone()?);
-                let mut line = String::new();
-                while reader.read_line(&mut line)? > 0 {
-                    if let Ok(msg) = FixMessage::parse(line.trim()) {
-                        if msg.msg_type() == Some("D") {
-                            let resp = execution_report(&msg, "EXEC-1", "ORD-1", '0', '0', 0.0, 0.0, 0.0, 0.0, "20261020-00:00:00.000");
-                            let _ = stream.write_all(resp.as_bytes());
-                        }
-                    }
-                    line.clear();
-                }
-            }
-            Ok(())
-        }
-        EOF
-        RUN cargo build --release --bin fix_gateway
-        FROM debian:bookworm-slim
-        RUN useradd -r gateway
-        COPY --from=builder /build/target/release/fix_gateway /usr/local/bin/fix_gateway
-        USER gateway
-        EXPOSE 9101
-        CMD ["fix_gateway"]
+      dockerfile: Dockerfile
     ports:
       - "9101:9101"
     environment:
@@ -79,47 +46,7 @@ services:
   quant-engine:
     build:
       context: ./quant-engine
-      dockerfile_inline: |
-        FROM python:3.12-slim
-        WORKDIR /app
-        COPY . .
-        RUN pip install --no-cache-dir fastapi "uvicorn[standard]" numpy scipy
-        RUN pip install --no-cache-dir -r requirements.txt
-        RUN cat > api_server.py <<'EOF'
-        import math
-        from fastapi import FastAPI
-        from pydantic import BaseModel
-        app = FastAPI(title="OPEN-ATLAS Quant Engine")
-        def _n(x): return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
-        def _np(x): return math.exp(-0.5 * x * x) / math.sqrt(2.0 * math.pi)
-        class BsmRequest(BaseModel):
-            spot: float
-            strike: float
-            vol: float
-            ttm: float
-            rate: float = 0.065
-            dividend: float = 0.0
-            option_type: str = "call"
-        @app.get("/health")
-        def health():
-            return {"status": "ok", "engine": "quant"}
-        @app.post("/price/bsm")
-        def bsm(req: BsmRequest):
-            s, k, r, q, v, t = req.spot, req.strike, req.rate, req.dividend, req.vol, req.ttm
-            d1 = (math.log(s / k) + (r - q + 0.5 * v * v) * t) / (v * math.sqrt(t))
-            d2 = d1 - v * math.sqrt(t)
-            if req.option_type.lower().startswith("c"):
-                price = s * math.exp(-q * t) * _n(d1) - k * math.exp(-r * t) * _n(d2)
-                delta = math.exp(-q * t) * _n(d1)
-            else:
-                price = k * math.exp(-r * t) * _n(-d2) - s * math.exp(-q * t) * _n(-d1)
-                delta = -math.exp(-q * t) * _n(-d1)
-            gamma = math.exp(-q * t) * _np(d1) / (s * v * math.sqrt(t))
-            vega = s * math.exp(-q * t) * _np(d1) * math.sqrt(t)
-            return {"price": price, "delta": delta, "gamma": gamma, "vega": vega}
-        EOF
-        EXPOSE 9102
-        CMD ["uvicorn", "api_server:app", "--host", "0.0.0.0", "--port", "9102"]
+      dockerfile: Dockerfile
     ports:
       - "9102:9102"
     depends_on:
@@ -130,8 +57,7 @@ services:
   redis:
     image: redis:7-alpine
     command: redis-server --appendonly yes
-    ports:
-      - "6379:6379"
+    # No host port published: reachable only on the internal network.
     volumes:
       - redis_data:/data
     healthcheck:
@@ -144,12 +70,12 @@ services:
 
   timescaledb:
     image: timescale/timescaledb:latest-pg16
-    ports:
-      - "5432:5432"
+    # No host port published: reachable only on the internal network.
+    # The password comes from the environment (.env) — never commit it.
     environment:
-      POSTGRES_USER: atlas
-      POSTGRES_PASSWORD: atlas
-      POSTGRES_DB: open_atlas
+      POSTGRES_USER: ${POSTGRES_USER:-atlas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see .env.example)}
+      POSTGRES_DB: ${POSTGRES_DB:-open_atlas}
     volumes:
       - tsdb_data:/var/lib/postgresql/data
     healthcheck:

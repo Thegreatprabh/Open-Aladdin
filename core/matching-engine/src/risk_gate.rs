@@ -60,6 +60,16 @@ impl OrderRequest {
 /// Reasons an order can be rejected by the risk gate.
 #[derive(Debug, Error, PartialEq)]
 pub enum RiskError {
+    #[error("invalid input: {field} must be {requirement}, got {value}")]
+    InvalidInput {
+        field: &'static str,
+        requirement: &'static str,
+        value: f64,
+    },
+    #[error("order quantity must be positive, got {0}")]
+    ZeroQuantity(u64),
+    #[error("invalid risk configuration: {0}")]
+    InvalidConfig(String),
     #[error("kill switch is engaged: all trading halted")]
     KillSwitchEngaged,
     #[error("order quantity {qty} exceeds per-order limit {limit}")]
@@ -69,10 +79,7 @@ pub enum RiskError {
     #[error(
         "fat-finger check failed: price deviates {deviation_pct:.2}% from reference (limit {limit_pct:.2}%)"
     )]
-    FatFinger {
-        deviation_pct: f64,
-        limit_pct: f64,
-    },
+    FatFinger { deviation_pct: f64, limit_pct: f64 },
     #[error("insufficient margin: required {required:.2}, available {available:.2}")]
     InsufficientMargin { required: f64, available: f64 },
 }
@@ -109,6 +116,47 @@ impl Default for RiskGate {
 }
 
 impl RiskGate {
+    /// Build a risk gate, validating the configuration. Returns
+    /// [`RiskError::InvalidConfig`] when a limit is non-finite, negative, or
+    /// a quantity limit is zero.
+    pub fn try_new(
+        max_order_qty: u64,
+        max_order_value: f64,
+        fat_finger_pct: f64,
+        price_scan_pct: f64,
+        extreme_loss_pct: f64,
+    ) -> Result<Self, RiskError> {
+        let bad = |what: &str| RiskError::InvalidConfig(what.to_string());
+        if max_order_qty == 0 {
+            return Err(bad("max_order_qty must be positive"));
+        }
+        for (name, v) in [
+            ("max_order_value", max_order_value),
+            ("fat_finger_pct", fat_finger_pct),
+            ("price_scan_pct", price_scan_pct),
+            ("extreme_loss_pct", extreme_loss_pct),
+        ] {
+            if !v.is_finite() {
+                return Err(bad(&format!("{name} must be finite")));
+            }
+            if v < 0.0 {
+                return Err(bad(&format!("{name} must not be negative")));
+            }
+        }
+        if max_order_value <= 0.0 {
+            return Err(bad("max_order_value must be positive"));
+        }
+        Ok(RiskGate {
+            max_order_qty,
+            max_order_value,
+            fat_finger_pct,
+            price_scan_pct,
+            extreme_loss_pct,
+            kill_switch: AtomicBool::new(false),
+        })
+    }
+
+    /// Convenience constructor that panics on invalid configuration.
     pub fn new(
         max_order_qty: u64,
         max_order_value: f64,
@@ -116,14 +164,14 @@ impl RiskGate {
         price_scan_pct: f64,
         extreme_loss_pct: f64,
     ) -> Self {
-        RiskGate {
+        Self::try_new(
             max_order_qty,
             max_order_value,
             fat_finger_pct,
             price_scan_pct,
             extreme_loss_pct,
-            kill_switch: AtomicBool::new(false),
-        }
+        )
+        .expect("valid risk configuration")
     }
 
     /// Halt all trading immediately (e.g. on a risk breach or ops command).
@@ -149,12 +197,66 @@ impl RiskGate {
         notional * (self.price_scan_pct + self.extreme_loss_pct)
     }
 
+    /// Validate every numeric field of the request before any arithmetic.
+    fn validate_request(&self, req: &OrderRequest) -> Result<(), RiskError> {
+        let finite = |field: &'static str, requirement: &'static str, v: f64| {
+            if !v.is_finite() {
+                return Err(RiskError::InvalidInput {
+                    field,
+                    requirement,
+                    value: v,
+                });
+            }
+            Ok(())
+        };
+        if req.qty == 0 {
+            return Err(RiskError::ZeroQuantity(0));
+        }
+        finite("price", "finite", req.price)?;
+        finite("reference_price", "finite", req.reference_price)?;
+        finite("underlying_price", "finite", req.underlying_price)?;
+        finite("available_margin", "finite", req.available_margin)?;
+        if req.price <= 0.0 {
+            return Err(RiskError::InvalidInput {
+                field: "price",
+                requirement: "positive",
+                value: req.price,
+            });
+        }
+        if req.reference_price <= 0.0 {
+            return Err(RiskError::InvalidInput {
+                field: "reference_price",
+                requirement: "positive",
+                value: req.reference_price,
+            });
+        }
+        if req.underlying_price <= 0.0 {
+            return Err(RiskError::InvalidInput {
+                field: "underlying_price",
+                requirement: "positive",
+                value: req.underlying_price,
+            });
+        }
+        if req.available_margin < 0.0 {
+            return Err(RiskError::InvalidInput {
+                field: "available_margin",
+                requirement: "non-negative",
+                value: req.available_margin,
+            });
+        }
+        Ok(())
+    }
+
     /// Run every pre-trade check. Returns `Ok(())` only if the order may be
     /// forwarded to the matching engine.
     pub fn check_order(&self, req: &OrderRequest) -> Result<(), RiskError> {
         if self.is_killed() {
             return Err(RiskError::KillSwitchEngaged);
         }
+        // Every numeric input is validated *before* any arithmetic: a NaN or
+        // infinite value makes all `>`/`<` comparisons false, which would let
+        // the order sail through every quantitative check below.
+        self.validate_request(req)?;
         if req.qty > self.max_order_qty {
             return Err(RiskError::QuantityLimitExceeded {
                 qty: req.qty,
@@ -176,6 +278,13 @@ impl RiskGate {
             });
         }
         let required = self.margin_estimate(req.underlying_price, req.qty);
+        if !required.is_finite() {
+            return Err(RiskError::InvalidInput {
+                field: "margin_estimate",
+                requirement: "finite",
+                value: required,
+            });
+        }
         if required > req.available_margin {
             return Err(RiskError::InsufficientMargin {
                 required,
@@ -252,6 +361,67 @@ mod tests {
             gate.check_order(&req),
             Err(RiskError::FatFinger { .. })
         ));
+    }
+
+    #[test]
+    fn nan_and_infinite_inputs_are_rejected() {
+        let gate = RiskGate::default();
+        type ReqMod = (&'static str, fn(&mut OrderRequest));
+        let mods: Vec<ReqMod> = vec![
+            ("price NaN", |r| r.price = f64::NAN),
+            ("price +inf", |r| r.price = f64::INFINITY),
+            ("price negative", |r| r.price = -1.0),
+            ("reference NaN", |r| r.reference_price = f64::NAN),
+            ("reference zero", |r| r.reference_price = 0.0),
+            ("underlying +inf", |r| r.underlying_price = f64::INFINITY),
+            ("margin NaN", |r| r.available_margin = f64::NAN),
+            ("margin negative", |r| r.available_margin = -5.0),
+        ];
+        for (name, make_bad) in mods {
+            let mut req = ok_request();
+            make_bad(&mut req);
+            let err = gate.check_order(&req);
+            assert!(
+                matches!(err, Err(RiskError::InvalidInput { .. })),
+                "{name}: expected InvalidInput rejection, got {err:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn zero_quantity_rejected() {
+        let gate = RiskGate::default();
+        let mut req = ok_request();
+        req.qty = 0;
+        assert_eq!(gate.check_order(&req), Err(RiskError::ZeroQuantity(0)));
+    }
+
+    #[test]
+    fn overflowing_notional_is_rejected() {
+        let gate = RiskGate::default();
+        let mut req = ok_request();
+        req.price = 1e308; // value = 5e309 -> +inf
+        assert!(matches!(
+            gate.check_order(&req),
+            Err(RiskError::ValueLimitExceeded { .. }) | Err(RiskError::InvalidInput { .. })
+        ));
+    }
+
+    #[test]
+    fn invalid_config_rejected() {
+        assert!(matches!(
+            RiskGate::try_new(0, 1.0, 5.0, 0.08, 0.02),
+            Err(RiskError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            RiskGate::try_new(1, -1.0, 5.0, 0.08, 0.02),
+            Err(RiskError::InvalidConfig(_))
+        ));
+        assert!(matches!(
+            RiskGate::try_new(1, 1.0, f64::NAN, 0.08, 0.02),
+            Err(RiskError::InvalidConfig(_))
+        ));
+        assert!(RiskGate::try_new(1, 1.0, 5.0, 0.08, 0.02).is_ok());
     }
 
     #[test]

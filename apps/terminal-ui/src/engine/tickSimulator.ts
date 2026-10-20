@@ -28,6 +28,16 @@ export const SYMBOL_SPECS: SymbolSpec[] = [
   { symbol: 'GOLD', label: 'GOLD', spot: 7824.5, sigma: 0.16, tick: 0.1, jumpLambda: 20, jumpMean: 0.0005, jumpSigma: 0.006, drift: 0.05, seedVol: 1200 },
 ];
 
+/** FNV-1a hash -> [0,1). Deterministic per input string. */
+function hash01(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 10000) / 10000;
+}
+
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -58,6 +68,7 @@ export class MarketEngine {
   private pausedFlag = false;
   private simTime: number;
   private tickCount = 0;
+  private lastAdvanceWall = Date.now();
 
   constructor(seed = 42) {
     this.rng = mulberry32(seed);
@@ -86,6 +97,7 @@ export class MarketEngine {
         p = Math.max(p * Math.exp((spec.drift - 0.5 * spec.sigma ** 2) * dt + spec.sigma * Math.sqrt(dt) * z), spec.tick);
         const v = spec.seedVol * (0.5 + this.rng());
         st.candles.push({
+          source: 'SIMULATED',
           t: t0 + i * 60000,
           o: open,
           h: Math.max(open, p) * (1 + 0.0006 * this.rng()),
@@ -128,8 +140,19 @@ export class MarketEngine {
   }
 
   /** Advance simulation time by dtRealSeconds of wall-clock (scaled by speed). */
+  /** Milliseconds since the engine last advanced (wall clock). */
+  feedAgeMs(): number {
+    return Date.now() - this.lastAdvanceWall;
+  }
+
+  /** A feed is stale when paused or when it has not advanced recently. */
+  isStale(thresholdMs = 2500): boolean {
+    return this.pausedFlag || this.feedAgeMs() > thresholdMs;
+  }
+
   advance(dtRealSeconds: number): void {
     if (this.pausedFlag) return;
+    this.lastAdvanceWall = Date.now();
     const dtSim = dtRealSeconds * this.speedMult;
     // 0.1-second sim substeps
     const steps = Math.max(1, Math.round(dtSim / 0.1));
@@ -163,13 +186,14 @@ export class MarketEngine {
           last.l = Math.min(last.l, st.price);
           last.v += vol;
         } else {
-          st.candles.push({ t: bucket, o: st.price, h: st.price, l: st.price, c: st.price, v: vol });
+          st.candles.push({ source: 'SIMULATED', t: bucket, o: st.price, h: st.price, l: st.price, c: st.price, v: vol });
           if (st.candles.length > 720) st.candles.splice(0, st.candles.length - 720);
         }
 
         // Tape: record trades for the two headline indices + random others
         if ((spec.symbol === 'NIFTY' || spec.symbol === 'BANKNIFTY' || this.rng() < 0.25) && this.rng() < 0.8) {
           this.tape.unshift({
+            source: 'SIMULATED',
             symbol: spec.symbol,
             price: st.price,
             qty: Math.max(1, Math.round(spec.seedVol * this.rng() * 0.4)),
@@ -188,6 +212,7 @@ export class MarketEngine {
       const change = st.price - st.open;
       return {
         symbol: spec.symbol,
+        source: 'SIMULATED',
         label: spec.label,
         price: st.price,
         prevPrice: st.prevPrice,
@@ -218,6 +243,7 @@ export class MarketEngine {
       const chunk = base.slice(i, i + mult);
       if (chunk.length === 0) continue;
       out.push({
+        source: chunk[0].source,
         t: chunk[0].t,
         o: chunk[0].o,
         h: Math.max(...chunk.map((c) => c.h)),
@@ -229,30 +255,37 @@ export class MarketEngine {
     return out.slice(-180);
   }
 
-  /** Level-2 book: 10 levels each side, sizes decaying away from touch. */
+  /** Level-2 book: 10 levels each side, sizes decaying away from touch.
+   * Deterministic for a given price: repeated reads at the same price
+   * return the identical book (sizes derive from a hash of symbol/level/
+   * price, not from the shared RNG stream). */
   getBook(symbol: string, depth = 10): Level2Book {
     const st = this.states.get(symbol);
-    if (!st) return { symbol, bids: [], asks: [], spread: 0, timestamp: this.simTime };
+    if (!st) return { symbol, source: 'SIMULATED', bids: [], asks: [], spread: 0, timestamp: this.simTime };
     const { spec } = st;
     const mid = st.price;
-    const spreadTicks = spec.tick * (1 + Math.floor(this.rng() * 3));
+    const priceTicks = Math.round(mid / spec.tick);
+    const spreadTicks = spec.tick * (1 + Math.floor(hash01(`${symbol}:spread:${priceTicks}`) * 3));
     const bids = [];
     const asks = [];
     for (let i = 0; i < depth; i++) {
       const decay = 1 / (1 + i * 0.55);
+      const hb = hash01(`${symbol}:bid:${i}:${priceTicks}`);
+      const ha = hash01(`${symbol}:ask:${i}:${priceTicks}`);
       bids.push({
         price: Math.round((mid - spreadTicks / 2 - i * spec.tick * 2) / spec.tick) * spec.tick,
-        qty: Math.round(spec.seedVol * decay * (0.6 + this.rng() * 0.9)),
-        orders: 1 + Math.floor(this.rng() * 14 * decay) + 1,
+        qty: Math.round(spec.seedVol * decay * (0.6 + hb * 0.9)),
+        orders: 1 + Math.floor(hb * 14 * decay) + 1,
       });
       asks.push({
         price: Math.round((mid + spreadTicks / 2 + i * spec.tick * 2) / spec.tick) * spec.tick,
-        qty: Math.round(spec.seedVol * decay * (0.6 + this.rng() * 0.9)),
-        orders: 1 + Math.floor(this.rng() * 14 * decay) + 1,
+        qty: Math.round(spec.seedVol * decay * (0.6 + ha * 0.9)),
+        orders: 1 + Math.floor(ha * 14 * decay) + 1,
       });
     }
     return {
       symbol,
+      source: 'SIMULATED',
       bids,
       asks,
       spread: asks[0].price - bids[0].price,
