@@ -6,11 +6,18 @@
 //! binary never fabricates a fill. `OrderCancelRequest` (35=F) cancels a
 //! resting order by its original ClOrdID.
 //!
-//! Honest scope: this is an application-level gateway, **not** a complete
-//! FIX session implementation. It validates framing per message
-//! (BeginString / BodyLength / CheckSum) but provides no sequence-gap
-//! recovery, resend requests, or store-and-forward. Do not expose it as a
-//! production FIX session endpoint.
+//! Session scope: Logon (35=A) is required before any application
+//! message and is authenticated by SenderCompID plus an optional shared
+//! password (`FIX_GATEWAY_PASSWORD`, tag 554). Heartbeat, test-request
+//! and logout are handled; inbound sequence numbers are tracked
+//! (duplicates close the session, gaps are audit-logged); outbound
+//! messages carry per-session sequence numbers; connections are capped
+//! and rate-limited; security-relevant events go to an audit log.
+//!
+//! Still NOT implemented: sequence-gap recovery, resend requests,
+//! store-and-forward, and TLS. Deploy only on private networks (the
+//! Compose file publishes the port on host loopback only) and never
+//! describe this as a certified FIX session endpoint.
 //!
 //! Documented simplifications of this paper gateway:
 //! * The fat-finger reference price is the last traded price when one
@@ -24,12 +31,14 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Instant;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use open_atlas_matching_engine::fix_parser::{
-    execution_report, FixBuilder, FixMessage, MAX_MESSAGE_BYTES, SOH,
+    execution_report_with_seq, FixBuilder, FixMessage, MAX_MESSAGE_BYTES, SOH,
 };
 use open_atlas_matching_engine::{Order, OrderBook, OrderRequest, RiskGate, Side};
 
@@ -101,7 +110,80 @@ fn now_ts() -> String {
 
 /// A rejection ExecutionReport (150=8 / 39=8) with the reason in tag 58,
 /// built directly so framing (BodyLength/CheckSum) is always correct.
-fn rejected_report(msg: &FixMessage, state: &mut State, text: &str) -> String {
+/// Per-connection FIX session state (see the file-level session scope).
+struct Session {
+    logged_on: bool,
+    sender: String,
+    expected_in: u64,
+    out_seq: u64,
+    close: bool,
+    win_start: Instant,
+    win_count: u32,
+}
+
+impl Session {
+    fn new() -> Self {
+        Self {
+            logged_on: false,
+            sender: String::new(),
+            expected_in: 1,
+            out_seq: 1,
+            close: false,
+            win_start: Instant::now(),
+            win_count: 0,
+        }
+    }
+    fn next_out(&mut self) -> u64 {
+        let s = self.out_seq;
+        self.out_seq += 1;
+        s
+    }
+    fn peer(&self, msg: &FixMessage) -> String {
+        if self.sender.is_empty() {
+            msg.get(49).unwrap_or("UNKNOWN").to_string()
+        } else {
+            self.sender.clone()
+        }
+    }
+    /// Rolling-window rate limit: at most 600 messages per 10 seconds.
+    fn allow(&mut self) -> bool {
+        let now = Instant::now();
+        if now.duration_since(self.win_start).as_secs() >= 10 {
+            self.win_start = now;
+            self.win_count = 0;
+        }
+        self.win_count += 1;
+        self.win_count <= 600
+    }
+}
+
+fn gateway_password() -> Option<String> {
+    std::env::var("FIX_GATEWAY_PASSWORD")
+        .ok()
+        .filter(|p| !p.is_empty())
+}
+
+fn password_ok(expected: Option<&str>, provided: Option<&str>) -> bool {
+    match expected {
+        None => true,
+        Some(exp) => provided == Some(exp),
+    }
+}
+
+/// FIX Reject (35=3) for session-level problems.
+fn session_reject(session: &mut Session, msg: &FixMessage, text: &str) -> String {
+    let seq = session.next_out();
+    let peer = session.peer(msg);
+    let ref_seq = msg.get(34).unwrap_or("0").to_string();
+    FixBuilder::new("3")
+        .set(45, ref_seq)
+        .set(58, text)
+        .set(373, "5")
+        .header("ATLAS", &peer, seq, &now_ts())
+        .build()
+}
+
+fn rejected_report(msg: &FixMessage, state: &mut State, seq: u64, text: &str) -> String {
     let mut b = FixBuilder::new("8")
         .set(37, "NONE")
         .set(17, state.next_exec_id())
@@ -122,26 +204,109 @@ fn rejected_report(msg: &FixMessage, state: &mut State, text: &str) -> String {
     }
     if let (Some(sender), Some(target)) = (msg.get(56), msg.get(49)) {
         let (sender, target) = (sender.to_string(), target.to_string());
-        b = b.header(&sender, &target, 0, &now_ts());
+        b = b.header(&sender, &target, seq, &now_ts());
     }
     b.build()
 }
 
-/// Handle one incoming message. Returns zero or more FIX replies.
-fn handle_message(state: &mut State, raw: &str) -> Vec<String> {
+/// Handle one incoming message within a session. Returns FIX replies.
+fn handle_message(state: &mut State, session: &mut Session, raw: &str) -> Vec<String> {
     let msg = match FixMessage::parse(raw) {
         Ok(m) => m,
         Err(e) => {
-            eprintln!("[gateway] parse error: {e}");
+            eprintln!("[audit] parse error: {e}");
             return Vec::new();
         }
     };
+    // Inbound sequence enforcement applies to every message, Logon incl.
+    match msg.get_i64(34) {
+        Ok(Some(n)) if n >= 1 => {
+            let n = n as u64;
+            if n < session.expected_in {
+                eprintln!(
+                    "[audit] duplicate/old seq {n} from {} (expected {}), closing",
+                    session.peer(&msg),
+                    session.expected_in
+                );
+                session.close = true;
+                return Vec::new();
+            }
+            if n > session.expected_in {
+                eprintln!(
+                    "[audit] seq gap from {}: got {n}, expected {} (resend recovery unsupported)",
+                    session.peer(&msg),
+                    session.expected_in
+                );
+            }
+            session.expected_in = n + 1;
+        }
+        _ => {
+            return vec![session_reject(
+                session,
+                &msg,
+                "MsgSeqNum (34) missing or invalid",
+            )]
+        }
+    }
     match msg.msg_type() {
-        Some("D") => handle_new_order(state, &msg),
-        Some("F") => handle_cancel(state, &msg),
+        Some("A") => {
+            let sender = msg.get(49).unwrap_or("").to_string();
+            if sender.is_empty() {
+                return vec![session_reject(
+                    session,
+                    &msg,
+                    "Logon missing SenderCompID (49)",
+                )];
+            }
+            if msg.get(56) != Some("ATLAS") {
+                return vec![session_reject(session, &msg, "unknown TargetCompID (56)")];
+            }
+            if !password_ok(gateway_password().as_deref(), msg.get(554)) {
+                eprintln!("[audit] logon authentication FAILED for {sender}");
+                session.close = true;
+                return vec![session_reject(session, &msg, "authentication failed")];
+            }
+            session.logged_on = true;
+            session.sender = sender.clone();
+            eprintln!("[audit] logon accepted: {sender}");
+            let seq = session.next_out();
+            vec![FixBuilder::new("A")
+                .set(98, "0")
+                .set(108, "30")
+                .header("ATLAS", &sender, seq, &now_ts())
+                .build()]
+        }
+        Some("0") => Vec::new(), // Heartbeat: no reply required.
+        Some("1") => {
+            // TestRequest: answer with a Heartbeat echoing tag 112.
+            let seq = session.next_out();
+            let mut b = FixBuilder::new("0").header("ATLAS", &session.peer(&msg), seq, &now_ts());
+            if let Some(id) = msg.get(112) {
+                let id = id.to_string();
+                b = b.set(112, id);
+            }
+            vec![b.build()]
+        }
+        Some("5") => {
+            let seq = session.next_out();
+            session.close = true;
+            vec![FixBuilder::new("5")
+                .header("ATLAS", &session.peer(&msg), seq, &now_ts())
+                .build()]
+        }
+        Some(_) if !session.logged_on => vec![session_reject(
+            session,
+            &msg,
+            "Logon (35=A) required before application messages",
+        )],
+        Some("D") => handle_new_order(state, session, &msg),
+        Some("F") => handle_cancel(state, session, &msg),
         other => {
-            eprintln!("[gateway] ignoring unsupported MsgType {other:?}");
-            Vec::new()
+            eprintln!(
+                "[audit] unsupported MsgType {other:?} from {}",
+                session.peer(&msg)
+            );
+            vec![session_reject(session, &msg, "unsupported MsgType")]
         }
     }
 }
@@ -174,17 +339,27 @@ fn validate_new_order(msg: &FixMessage) -> Result<(Side, u64, f64), String> {
     Ok((side, qty_f as u64, price))
 }
 
-fn handle_new_order(state: &mut State, msg: &FixMessage) -> Vec<String> {
+fn handle_new_order(state: &mut State, session: &mut Session, msg: &FixMessage) -> Vec<String> {
     let (side, qty, price) = match validate_new_order(msg) {
         Ok(v) => v,
-        Err(reason) => return vec![rejected_report(msg, state, &reason)],
+        Err(reason) => return vec![rejected_report(msg, state, session.next_out(), &reason)],
     };
     let cl_ord_id = msg.cl_ord_id().unwrap_or("").to_string();
     if cl_ord_id.is_empty() {
-        return vec![rejected_report(msg, state, "missing ClOrdID (11)")];
+        return vec![rejected_report(
+            msg,
+            state,
+            session.next_out(),
+            "missing ClOrdID (11)",
+        )];
     }
     if state.cl_to_internal.contains_key(&cl_ord_id) {
-        return vec![rejected_report(msg, state, "duplicate ClOrdID (11)")];
+        return vec![rejected_report(
+            msg,
+            state,
+            session.next_out(),
+            "duplicate ClOrdID (11)",
+        )];
     }
 
     // Risk gate: reference = last trade price if any, else the limit price.
@@ -198,12 +373,22 @@ fn handle_new_order(state: &mut State, msg: &FixMessage) -> Vec<String> {
         available_margin: PAPER_MARGIN,
     };
     if let Err(e) = state.gate.check_order(&req) {
-        return vec![rejected_report(msg, state, &e.to_string())];
+        return vec![rejected_report(
+            msg,
+            state,
+            session.next_out(),
+            &e.to_string(),
+        )];
     }
 
     let ticks = (price * 100.0).round() as i64;
     if ticks <= 0 {
-        return vec![rejected_report(msg, state, "price rounds to zero ticks")];
+        return vec![rejected_report(
+            msg,
+            state,
+            session.next_out(),
+            "price rounds to zero ticks",
+        )];
     }
     let internal_id = state.next_internal_id;
     state.next_internal_id += 1;
@@ -211,13 +396,18 @@ fn handle_new_order(state: &mut State, msg: &FixMessage) -> Vec<String> {
     let order = Order::limit(internal_id, side, ticks, qty, internal_id);
 
     match state.book.insert_order(order) {
-        Err(e) => vec![rejected_report(msg, state, &e.to_string())],
+        Err(e) => vec![rejected_report(
+            msg,
+            state,
+            session.next_out(),
+            &e.to_string(),
+        )],
         Ok(trades) => {
             state.cl_to_internal.insert(cl_ord_id, internal_id);
             let mut replies = Vec::new();
             if trades.is_empty() {
                 // Resting, no execution yet: New (150=0 / 39=0).
-                replies.push(execution_report(
+                replies.push(execution_report_with_seq(
                     msg,
                     &state.next_exec_id(),
                     &order_id,
@@ -228,6 +418,7 @@ fn handle_new_order(state: &mut State, msg: &FixMessage) -> Vec<String> {
                     0.0,
                     0.0,
                     &now_ts(),
+                    session.next_out(),
                 ));
                 return replies;
             }
@@ -239,7 +430,7 @@ fn handle_new_order(state: &mut State, msg: &FixMessage) -> Vec<String> {
                 turnover += px * t.qty as f64;
                 state.last_trade_price = Some(px);
                 let status = if cum >= qty { '2' } else { '1' };
-                replies.push(execution_report(
+                replies.push(execution_report_with_seq(
                     msg,
                     &state.next_exec_id(),
                     &order_id,
@@ -250,6 +441,7 @@ fn handle_new_order(state: &mut State, msg: &FixMessage) -> Vec<String> {
                     cum as f64,
                     turnover / cum as f64,
                     &now_ts(),
+                    session.next_out(),
                 ));
             }
             replies
@@ -257,10 +449,17 @@ fn handle_new_order(state: &mut State, msg: &FixMessage) -> Vec<String> {
     }
 }
 
-fn handle_cancel(state: &mut State, msg: &FixMessage) -> Vec<String> {
+fn handle_cancel(state: &mut State, session: &mut Session, msg: &FixMessage) -> Vec<String> {
     let orig_cl = match msg.get(41) {
         Some(v) => v.to_string(),
-        None => return vec![rejected_report(msg, state, "missing OrigClOrdID (41)")],
+        None => {
+            return vec![rejected_report(
+                msg,
+                state,
+                session.next_out(),
+                "missing OrigClOrdID (41)",
+            )]
+        }
     };
     let internal = match state.cl_to_internal.get(&orig_cl) {
         Some(id) => *id,
@@ -268,6 +467,7 @@ fn handle_cancel(state: &mut State, msg: &FixMessage) -> Vec<String> {
             return vec![rejected_report(
                 msg,
                 state,
+                session.next_out(),
                 "unknown OrigClOrdID (41): order not resting",
             )]
         }
@@ -290,9 +490,16 @@ fn handle_cancel(state: &mut State, msg: &FixMessage) -> Vec<String> {
                 .set(14, format!("{filled}"))
                 .set(151, format!("{leaves}"))
                 .set(38, format!("{total}"));
+            let (sender, seq) = (session.sender.clone(), session.next_out());
+            let b = b.header("ATLAS", &sender, seq, &now_ts());
             vec![b.build()]
         }
-        Err(e) => vec![rejected_report(msg, state, &e.to_string())],
+        Err(e) => vec![rejected_report(
+            msg,
+            state,
+            session.next_out(),
+            &e.to_string(),
+        )],
     }
 }
 
@@ -353,6 +560,7 @@ fn extract_messages(buf: &mut String) -> Vec<String> {
 }
 
 fn handle_conn(mut stream: TcpStream, state: Arc<Mutex<State>>) {
+    let mut session = Session::new();
     let mut buf = String::new();
     let mut chunk = [0u8; 8192];
     loop {
@@ -361,18 +569,25 @@ fn handle_conn(mut stream: TcpStream, state: Arc<Mutex<State>>) {
             Ok(n) => {
                 buf.push_str(&String::from_utf8_lossy(&chunk[..n]));
                 if buf.len() > MAX_MESSAGE_BYTES * 2 {
-                    eprintln!("[gateway] oversized buffer, dropping connection");
+                    eprintln!("[audit] oversized buffer, dropping connection");
                     return;
                 }
                 for raw in extract_messages(&mut buf) {
+                    if !session.allow() {
+                        eprintln!("[audit] rate limit exceeded, closing connection");
+                        return;
+                    }
                     let replies = {
                         let mut st = state.lock().unwrap();
-                        handle_message(&mut st, &raw)
+                        handle_message(&mut st, &mut session, &raw)
                     };
                     for r in replies {
                         if stream.write_all(r.as_bytes()).is_err() {
                             return;
                         }
+                    }
+                    if session.close {
+                        return;
                     }
                 }
             }
@@ -386,14 +601,30 @@ fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind(&addr)?;
     println!("[gateway] OPEN-ATLAS FIX gateway listening on {addr}");
     println!(
-        "[gateway] application-level only: no FIX session layer, paper margin ₹{PAPER_MARGIN:.0}"
+        "[gateway] session: logon auth + seq tracking; no resend recovery / no TLS; paper margin ₹{PAPER_MARGIN:.0}"
     );
+    match gateway_password() {
+        Some(_) => println!("[gateway] logon password authentication: ENABLED"),
+        None => println!(
+            "[gateway] WARNING: FIX_GATEWAY_PASSWORD not set — Logon accepts any SenderCompID; internal networks only"
+        ),
+    }
+    static ACTIVE: AtomicUsize = AtomicUsize::new(0);
+    const MAX_CONNECTIONS: usize = 32;
     let state = Arc::new(Mutex::new(State::new()));
     for stream in listener.incoming() {
         match stream {
             Ok(s) => {
+                if ACTIVE.fetch_add(1, Ordering::SeqCst) >= MAX_CONNECTIONS {
+                    ACTIVE.fetch_sub(1, Ordering::SeqCst);
+                    eprintln!("[audit] connection cap ({MAX_CONNECTIONS}) reached, refusing");
+                    continue;
+                }
                 let st = Arc::clone(&state);
-                thread::spawn(move || handle_conn(s, st));
+                thread::spawn(move || {
+                    handle_conn(s, st);
+                    ACTIVE.fetch_sub(1, Ordering::SeqCst);
+                });
             }
             Err(e) => eprintln!("[gateway] accept error: {e}"),
         }
@@ -407,10 +638,14 @@ mod tests {
     use open_atlas_matching_engine::fix_parser::new_order_single;
 
     fn nos(cl: &str, side: char, qty: f64, price: f64) -> String {
+        nos_seq(cl, side, qty, price, 1)
+    }
+
+    fn nos_seq(cl: &str, side: char, qty: f64, price: f64, seq: u64) -> String {
         new_order_single(
             "TEST",
             "ATLAS",
-            1,
+            seq,
             "20261020-03:30:00.000",
             cl,
             "NIFTY",
@@ -419,6 +654,14 @@ mod tests {
             price,
             "20261020-03:30:00.000",
         )
+    }
+
+    fn logon(seq: u64) -> String {
+        FixBuilder::new("A")
+            .set(98, "0")
+            .set(108, "30")
+            .header("TEST", "ATLAS", seq, "20261020-03:30:00.000")
+            .build()
     }
 
     #[test]
@@ -458,21 +701,52 @@ mod tests {
     }
 
     #[test]
-    fn handler_routes_through_risk_and_book() {
+    fn password_policy() {
+        assert!(password_ok(None, None));
+        assert!(password_ok(None, Some("anything")));
+        assert!(password_ok(Some("s3cret"), Some("s3cret")));
+        assert!(!password_ok(Some("s3cret"), Some("wrong")));
+        assert!(!password_ok(Some("s3cret"), None));
+    }
+
+    #[test]
+    fn session_flow_routes_through_risk_and_book() {
         let mut st = State::new();
-        // Resting sell, then a crossing buy: the fill must be at maker price.
-        let r1 = handle_message(&mut st, &nos("S1", '2', 10.0, 100.0));
+        let mut sess = Session::new();
+        // Order before Logon: session Reject, nothing reaches the book.
+        let r0 = handle_message(&mut st, &mut sess, &nos_seq("X1", '1', 5.0, 100.0, 1));
+        assert_eq!(r0.len(), 1);
+        assert!(r0[0].contains("35=3"), "pre-logon reject: {}", r0[0]);
+        assert_eq!(st.book.open_order_count(), 0);
+        // Logon is accepted and answered with a Logon.
+        let r1 = handle_message(&mut st, &mut sess, &logon(2));
         assert_eq!(r1.len(), 1);
-        assert!(r1[0].contains("150=0"), "resting ack expected: {}", r1[0]);
-        let r2 = handle_message(&mut st, &nos("B1", '1', 4.0, 100.50));
-        assert_eq!(r2.len(), 1);
-        assert!(r2[0].contains("150=F"));
-        assert!(r2[0].contains("31=100"), "maker price: {}", r2[0]);
-        // Oversized order: rejected by the risk gate, not acknowledged.
-        let r3 = handle_message(&mut st, &nos("B2", '1', 200_000.0, 100.0));
-        assert_eq!(r3.len(), 1);
-        assert!(r3[0].contains("150=8"));
-        // Garbage never produces a reply.
-        assert!(handle_message(&mut st, "not fix at all").is_empty());
+        assert!(r1[0].contains("35=A"), "logon reply: {}", r1[0]);
+        assert!(sess.logged_on);
+        // Resting sell, then a crossing buy: the fill is at maker price.
+        let r2 = handle_message(&mut st, &mut sess, &nos_seq("S1", '2', 10.0, 100.0, 3));
+        assert!(r2[0].contains("150=0"), "resting ack: {}", r2[0]);
+        let r3 = handle_message(&mut st, &mut sess, &nos_seq("B1", '1', 4.0, 100.50, 4));
+        assert!(r3[0].contains("150=F") && r3[0].contains("31=100"));
+        // Oversized order: risk rejection, not an acknowledgement.
+        let r4 = handle_message(&mut st, &mut sess, &nos_seq("B2", '1', 200_000.0, 100.0, 5));
+        assert!(r4[0].contains("150=8"));
+        // TestRequest is answered by a Heartbeat echoing tag 112.
+        let tr = FixBuilder::new("1")
+            .set(112, "PING7")
+            .header("TEST", "ATLAS", 6, "20261020-03:30:00.000")
+            .build();
+        let r5 = handle_message(&mut st, &mut sess, &tr);
+        assert!(r5[0].contains("35=0") && r5[0].contains("112=PING7"));
+        // A duplicate (old) sequence number closes the session silently.
+        let r6 = handle_message(&mut st, &mut sess, &nos_seq("B3", '1', 1.0, 100.0, 3));
+        assert!(r6.is_empty() && sess.close);
+    }
+
+    #[test]
+    fn garbage_never_replies() {
+        let mut st = State::new();
+        let mut sess = Session::new();
+        assert!(handle_message(&mut st, &mut sess, "not fix at all").is_empty());
     }
 }

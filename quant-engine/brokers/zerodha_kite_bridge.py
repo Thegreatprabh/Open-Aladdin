@@ -22,6 +22,24 @@ Safety model
       - Paper and live orders are kept in separate stores; a live order
         never appears in the paper book and vice versa.
       - Session responses never contain access tokens or secrets.
+
+Order lifecycle & retry policy
+------------------------------
+* Placement is **single-shot**: it is never retried automatically. A
+  timeout after submission may mean the broker accepted the order, and a
+  blind retry can create a duplicate. On an uncertain outcome, call
+  `reconcile()` / `orders()` to learn the broker's actual state before
+  deciding anything.
+* An order id is an **acknowledgement, not a fill**. Status lifecycle
+  (OPEN -> partial -> COMPLETE / REJECTED / CANCELLED), filled quantity
+  and average price must be read back from the broker (`orders()`), never
+  inferred from the placement response.
+* These bridges are **single-account** (environment credentials). They
+  enforce no per-user isolation themselves: ownership is enforced by the
+  broker against the authenticated account. Do not expose a bridge
+  instance to multiple end users; a multi-user deployment needs a backend
+  account layer (per-user encrypted tokens, authorization checks) that
+  does not exist in this codebase yet.
 """
 
 from __future__ import annotations
@@ -390,6 +408,33 @@ class KiteBridge(_Const):
         if not self.live:
             out["response"] = {"status": "success", "data": paper}
         return out
+
+    def reconcile(self) -> dict:
+        """Compare the local order caches against the broker's order book.
+
+        Returns order ids in three buckets: `matched` (known locally and
+        at the broker), `missing_at_broker` (placed locally, absent at the
+        broker — investigate before re-submitting anything), and
+        `unknown_locally` (at the broker but not placed through this
+        instance). Paper mode reconciles the paper store trivially.
+        """
+        if not (self.live and self._kite is not None):
+            return {"mode": "paper",
+                    "matched": sorted(self._paper_orders),
+                    "missing_at_broker": [], "unknown_locally": []}
+        try:
+            broker_orders = self._kite.orders()
+        except Exception as exc:
+            raise KiteOrderError(
+                f"reconciliation failed: broker order book unreadable: {exc}"
+            ) from exc
+        broker_ids = {str(o["order_id"]) for o in broker_orders
+                      if isinstance(o, dict) and o.get("order_id")}
+        local = set(self._live_orders)
+        return {"mode": "live",
+                "matched": sorted(local & broker_ids),
+                "missing_at_broker": sorted(local - broker_ids),
+                "unknown_locally": sorted(broker_ids - local)}
 
     def positions(self) -> dict:
         live_fn = self._kite.positions if self._kite is not None else None

@@ -24,6 +24,27 @@ and the listed regression test/command was actually run.
 | DOC-1 | Medium | `README.md` | No consolidated statement of operating modes / what's simulated / limitations | Docs grew feature-first | "Operating modes & limitations" section: SIMULATED default, no live market data, broker bridges are backend-only paper wrappers, FIX gateway scope (application-level, no session layer) | README diff | Verified |
 | CI-1 | Low | `.github/workflows/ci.yml` | No rustfmt/clippy gates; Python job doesn't run the correctness tests | Initial CI scope | Add fmt + clippy steps and the BSM correctness test to the Python job (workflow file updated via web UI — the GitHub App cannot write workflow files) | CI run #30 on the hardening commits: all four jobs green (fmt, clippy -D warnings, 35 unit tests, gateway E2E, BSM suite, API validation) | Verified |
 
+## Round 4 — architecture findings verification + fixes (2026-10-20)
+
+Every finding in this round was re-verified against the source before any
+fix. Verdicts: the two P0 architecture absences (live data pipeline,
+per-user credential isolation) are **confirmed real and remain open by
+design decision** — they are new subsystems, not defects with a local
+patch; both bridges and the README state this plainly. Everything with a
+concrete code fix was fixed:
+
+| ID | Sev | Location | Finding (verified) | Fix | Evidence | Status |
+|---|---|---|---|---|---|---|
+| GW-2 | High | `fix_gateway.rs` + compose | Gateway had NO session behavior: orders were accepted from any TCP client, no Logon, no heartbeat, outbound seq was ad-hoc, and Compose published 9101 on all host interfaces | Logon required (SenderCompID + optional `FIX_GATEWAY_PASSWORD` tag 554), heartbeat/test-request/logout, inbound seq tracking (duplicates close, gaps audit-logged), per-session outbound seq, 32-connection cap, 600 msg/10s rate limit, `[audit]` event log; Compose now publishes `127.0.0.1:9101` only. Still no resend recovery or TLS (documented) | 6 gateway unit tests (session flow, password policy) + E2E extended: pre-logon reject, logon, heartbeat echo, all order scenarios — ALL PASS | Verified |
+| DC-1 | Medium | `docker-compose.yml` | `VITE_FIX_GATEWAY_URL=http://localhost:9101` presented the raw-TCP gateway as an HTTP endpoint; the variable (and `VITE_QUANT_API_URL`) was read by no frontend code | Both removed with an explanatory comment (the browser app talks to neither service in this build) | grep: zero frontend references | Verified |
+| DC-2 | Medium | `docker-compose.yml` healthcheck | `pg_isready -U atlas -d open_atlas` hard-coded user/db while both are env-configurable — custom values fail the healthcheck spuriously | Healthcheck uses `$${POSTGRES_USER:-atlas}` / `$${POSTGRES_DB:-open_atlas}` (container-side expansion) | YAML re-validated | Verified |
+| FE-3 | Medium | `blackScholes.ts`, `backtestEngine.ts` | Invalid inputs propagated silently: NaN spot/vol produced NaN prices with no contract; the backtester let a NaN close poison the whole equity curve and accepted empty/invalid inputs implicitly | `validBsInputs` contract: invalid inputs → NaN price (never fabricated), Greeks collapse to the expiry step for T=0/σ=0; backtester throws on invalid capital / all-invalid series, carries last valid close forward over NaN closes, empty series yields the defined empty result | Vitest 32 → **38 tests**, incl. invalid-input and guardrail suites | Verified |
+| MD-3 | Low | `OptionsChainView.tsx`, `Surface3DView.tsx` | The synthetic option chain and GEX/IV surfaces carried no local label (only the global feed badge) | "SIMULATED CHAIN" chip in the chain toolbar; "DATA SOURCE: SIMULATED" badge on the surface view, both with explanatory titles | Build green | Verified |
+| BR-7 | Medium | both broker bridges | No order-lifecycle reconciliation workflow; retry/idempotency policy implicit; ack-vs-fill semantics undocumented | `reconcile()` added to both bridges (matched / missing_at_broker / unknown_locally vs the broker's order book); module docs now state the single-shot no-retry policy, ack ≠ fill, and the single-account ownership model | 8 new checks in `test_broker_bridges.py` (63 total, all pass), incl. a single-shot placement test | Verified |
+| AR-1 | P0 | system architecture | **Live market-data pipeline does not exist**: the terminal consumes only its in-browser simulator; the only ticker class is `KiteTickerSim`; the Python bridges' live paths do not feed the frontend | NOT a patch — requires a backend streaming service (broker-authorized ingestion → normalized events → WebSocket fan-out → frontend subscription with reconnect/stale handling). Bridges + normalized event types + provenance already exist as foundations | Confirmed by inspection | **Open — new subsystem** |
+| AR-2 | P0 | system architecture | **Per-user credentials & isolation do not exist**: bridges read shared env credentials; the browser never authenticates to a backend | NOT a patch — requires an account service (authenticated sessions, encrypted per-user token storage, user→broker mapping, per-request authorization, revocation) | Confirmed by inspection | **Open — new subsystem** |
+| AR-3 | Info | broker bridges | Real-broker sandbox verification has never run (mocked tests only) | Requires the owner's broker sandbox/app credentials and a test account | — | Blocked (credentials) |
+
 ## Round 2 — broker-bridge & framing hardening (branch `fix/critical-trading-safety`)
 
 Baseline re-verified 2026-10-20 before changes: CI run #30 all-green on main

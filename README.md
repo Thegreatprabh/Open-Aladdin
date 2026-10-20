@@ -433,15 +433,17 @@ Every piece of market data in this repository carries a source stamp (`SIMULATED
   reports a real fill. Real broker sessions belong to the backend Python bridges
   (`quant-engine/brokers/`), which read credentials from the environment only and are paper-mode wrappers around
   the brokers' official REST APIs — they have not been exercised against a live broker account from this repo.
-* **The FIX gateway is application-level, not a session layer.** It validates FIX framing (BeginString,
-  BodyLength, CheckSum, duplicate fields, size limits), routes orders through the risk gate and the matching
-  engine, and reports real outcomes — but it implements no sequence-gap recovery, resend, or store-and-forward,
-  and must not be deployed as a production FIX session endpoint.
+* **The FIX gateway has basic session security, not full session recovery.** It validates FIX framing
+  (BeginString, BodyLength, CheckSum, duplicate fields, size limits), requires an authenticated Logon
+  (SenderCompID plus an optional shared password), tracks per-session sequence numbers, answers heartbeat /
+  test-requests, caps connections and rate, and writes an audit log — then routes orders through the risk gate
+  and the matching engine and reports real outcomes. It implements no sequence-gap recovery, resend,
+  store-and-forward, or TLS, and must not be deployed as a production FIX session endpoint.
 * **Margin figures are percentage-of-notional estimates** (see *Margin model* below), never exchange SPAN.
 * **The audit trail** for the engineering hardening pass — every issue found in the actual source, its severity,
   and the regression evidence for its fix — lives in [`docs/ISSUE_REGISTER.md`](docs/ISSUE_REGISTER.md), including
-  an explicit list of what remains unverified (no Docker daemon end-to-end run, no frontend unit-test runner yet,
-  no live broker sandbox test).
+  an explicit list of what remains open (no Docker end-to-end run in the audit environment, no live-data
+  pipeline or per-user account layer yet, no live broker sandbox test).
 
 ---
 

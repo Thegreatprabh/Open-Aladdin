@@ -21,9 +21,10 @@ services:
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
     ports:
       - "5173:5173"
-    environment:
-      VITE_FIX_GATEWAY_URL: "http://localhost:9101"
-      VITE_QUANT_API_URL: "http://localhost:9102"
+    # NOTE: no VITE_* URLs are set — the browser app never talks to the
+    # FIX gateway (raw TCP) or the quant API directly; all computation is
+    # in-browser in this build. A previous VITE_FIX_GATEWAY_URL pointing
+    # at the TCP port as if it were HTTP was dead, misleading config.
     depends_on:
       - matching-engine
       - quant-engine
@@ -35,9 +36,14 @@ services:
       context: ./core/matching-engine
       dockerfile: Dockerfile
     ports:
-      - "9101:9101"
+      # Loopback only: the gateway is an internal order endpoint, never a
+      # public one. Brokers/tools on this host can still reach it.
+      - "127.0.0.1:9101:9101"
     environment:
       RUST_LOG: "info"
+      # Optional shared Logon password (tag 554). Set in .env for any
+      # deployment beyond a single developer machine.
+      FIX_GATEWAY_PASSWORD: ${FIX_GATEWAY_PASSWORD:-}
     depends_on:
       - redis
     networks:
@@ -79,7 +85,7 @@ services:
     volumes:
       - tsdb_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U atlas -d open_atlas"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-atlas} -d $${POSTGRES_DB:-open_atlas}"]
       interval: 5s
       timeout: 3s
       retries: 10

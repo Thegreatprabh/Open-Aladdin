@@ -175,8 +175,22 @@ export function runBacktest(
   strategy: StrategyId,
   initialCapital = 1_00_00_000,
 ): BacktestResult {
-  const closes = candles.map((c) => c.c);
-  const pos = generateSignals(candles, strategy);
+  if (!Number.isFinite(initialCapital) || initialCapital <= 0) {
+    throw new Error('runBacktest: initialCapital must be positive and finite');
+  }
+  // Sanitize closes: a non-finite or non-positive close must never poison
+  // the equity curve with NaN. Carry the last valid close forward; if the
+  // series has no valid close at all, the backtest is meaningless.
+  let lastValid = Number.NaN;
+  const closes = candles.map((c) => {
+    if (Number.isFinite(c.c) && c.c > 0) lastValid = c.c;
+    return lastValid;
+  });
+  if (candles.length > 0 && !Number.isFinite(lastValid)) {
+    throw new Error('runBacktest: candle series contains no valid close');
+  }
+  const safeCandles = candles.map((c, i) => ({ ...c, c: closes[i] }));
+  const pos = generateSignals(safeCandles, strategy);
   const frac = 0.95; // 95% capital deployed when in position
   const costBps = 0.0004; // 4 bps round-trip cost on position changes
 
@@ -185,7 +199,7 @@ export function runBacktest(
   let trades = 0;
   let wins = 0;
   let entryEquity = 0;
-  for (let i = 1; i < candles.length; i++) {
+  for (let i = 1; i < safeCandles.length; i++) {
     const assetRet = closes[i] / closes[i - 1] - 1;
     let r = pos[i - 1] * frac * assetRet;
     if (pos[i] !== pos[i - 1]) {

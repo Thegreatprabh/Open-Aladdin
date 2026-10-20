@@ -79,6 +79,11 @@ class FakeKite:
         FakeKite.cancelled.append(kw)
         return kw["order_id"]
 
+    orders_data = []
+
+    def orders(self):
+        return list(FakeKite.orders_data)
+
     def generate_session(self, request_token, api_secret=None):
         return {"access_token": "SECRET-TOKEN-XYZ", "user_id": "AB1234",
                 "user_name": "Test User", "login_time": "2026-10-20 09:15"}
@@ -250,6 +255,40 @@ for name, patch in [
     bad = {**GOOD, **patch}
     expect_raises(f"dhan rejects {name}", ValueError,
                   lambda b=bad: db.place_order(**b))
+
+# --- Reconciliation + retry policy ------------------------------------------- #
+FakeKite.behavior = "ok"
+kl2 = KiteBridge(live=True)
+placed_id = kl2.place_order(**VALID)["order_id"]
+FakeKite.orders_data = [{"order_id": placed_id}, {"order_id": "FOREIGN-1"}]
+rec = kl2.reconcile()
+check("kite reconcile matched", rec["matched"] == [placed_id])
+check("kite reconcile unknown_locally", rec["unknown_locally"] == ["FOREIGN-1"])
+check("kite reconcile nothing missing", rec["missing_at_broker"] == [])
+FakeKite.orders_data = []
+rec = kl2.reconcile()
+check("kite reconcile detects missing at broker",
+      rec["missing_at_broker"] == [placed_id])
+rec = kb.reconcile()
+check("kite paper reconcile trivial", rec["mode"] == "paper"
+      and rec["missing_at_broker"] == [])
+
+calls_before = len(FakeKite.placed)
+FakeKite.behavior = "raise"
+try:
+    kl2.place_order(**VALID)
+except KiteOrderError:
+    pass
+FakeKite.behavior = "ok"
+check("kite placement is single-shot (no blind retry)",
+      len(FakeKite.placed) == calls_before + 1)
+
+dhan_mod.urllib.request.urlopen = fake_urlopen_factory(
+    [{"orderId": "DHAN-LIVE-77", "orderStatus": "PENDING"}])
+rec = dl.reconcile()
+check("dhan reconcile matched", rec["matched"] == ["DHAN-LIVE-77"])
+rec = db.reconcile()
+check("dhan paper reconcile trivial", rec["mode"] == "paper")
 
 print()
 print("RESULT:", "ALL PASS" if not FAIL else f"{len(FAIL)} FAILURES: {FAIL}")

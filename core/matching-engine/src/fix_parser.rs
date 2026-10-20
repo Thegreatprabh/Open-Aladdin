@@ -343,6 +343,67 @@ pub fn execution_report(
     avg_px: f64,
     transact_time: &str,
 ) -> String {
+    execution_report_impl(
+        orig,
+        exec_id,
+        order_id,
+        exec_type,
+        ord_status,
+        last_qty,
+        last_px,
+        cum_qty,
+        avg_px,
+        transact_time,
+        None,
+    )
+}
+
+/// Like [`execution_report`], but the outbound MsgSeqNum (34) is supplied
+/// by the caller's session layer instead of being derived from the
+/// inbound message.
+#[allow(clippy::too_many_arguments)]
+pub fn execution_report_with_seq(
+    orig: &FixMessage,
+    exec_id: &str,
+    order_id: &str,
+    exec_type: char,
+    ord_status: char,
+    last_qty: f64,
+    last_px: f64,
+    cum_qty: f64,
+    avg_px: f64,
+    transact_time: &str,
+    seq: u64,
+) -> String {
+    execution_report_impl(
+        orig,
+        exec_id,
+        order_id,
+        exec_type,
+        ord_status,
+        last_qty,
+        last_px,
+        cum_qty,
+        avg_px,
+        transact_time,
+        Some(seq),
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execution_report_impl(
+    orig: &FixMessage,
+    exec_id: &str,
+    order_id: &str,
+    exec_type: char,
+    ord_status: char,
+    last_qty: f64,
+    last_px: f64,
+    cum_qty: f64,
+    avg_px: f64,
+    transact_time: &str,
+    seq_override: Option<u64>,
+) -> String {
     let order_qty = orig.order_qty().ok().flatten().unwrap_or(0.0);
     let leaves_qty = (order_qty - cum_qty).max(0.0);
     let mut b = FixBuilder::new("8")
@@ -372,16 +433,14 @@ pub fn execution_report(
     if let Ok(Some(p)) = orig.price() {
         b = b.set(44, format!("{p}"));
     }
-    // Carry the session header forward (swapped sender/target is the
-    // caller's job in a full session layer; keep values for traceability).
+    // Carry the session header forward (sender/target swapped). The
+    // outbound sequence number comes from the caller's session layer when
+    // supplied; the standalone helper derives it from the inbound message.
     if let (Some(s), Some(t), Some(ts)) = (orig.get(56), orig.get(49), orig.get(52)) {
         let (s, t, ts) = (s.to_string(), t.to_string(), ts.to_string());
-        b = b.header(
-            &s,
-            &t,
-            orig.get_i64(34).ok().flatten().unwrap_or(0) as u64 + 1,
-            &ts,
-        );
+        let seq =
+            seq_override.unwrap_or_else(|| orig.get_i64(34).ok().flatten().unwrap_or(0) as u64 + 1);
+        b = b.header(&s, &t, seq, &ts);
     }
     b.build()
 }

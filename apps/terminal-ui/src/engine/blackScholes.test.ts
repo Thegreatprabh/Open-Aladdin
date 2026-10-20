@@ -70,3 +70,19 @@ describe('impliedVol', () => {
     expect(impliedVol(5, 100, 100, 0, 0.05, 'CE')).toBe(0);
   });
 });
+
+describe('invalid-input contract', () => {
+  it('NaN/negative/non-finite inputs yield NaN, never a fabricated price', () => {
+    expect(bsPrice({ ...CANON, S: Number.NaN, type: 'CE' })).toBeNaN();
+    expect(bsPrice({ ...CANON, S: -100, type: 'CE' })).toBeNaN();
+    expect(bsPrice({ ...CANON, K: 0, type: 'CE' })).toBeNaN();
+    expect(bsPrice({ ...CANON, sigma: Number.NaN, type: 'CE' })).toBeNaN();
+    expect(bsPrice({ ...CANON, r: Number.POSITIVE_INFINITY, type: 'CE' })).toBeNaN();
+  });
+  it('greeks collapse to the expiry step for T=0 instead of NaN soup', () => {
+    const g = bsGreeks({ ...CANON, S: 120, T: 0, type: 'CE' });
+    expect(g.delta).toBe(1);
+    expect(g.gamma).toBe(0);
+    expect(g.vega).toBe(0);
+  });
+});

@@ -75,3 +75,29 @@ describe('monteCarloBootstrap', () => {
     }
   });
 });
+
+describe('runBacktest guardrails', () => {
+  const mk = (closes: number[]) =>
+    closes.map((c, i) => ({
+      t: i * 86400000, o: c, h: c, l: c, c, v: 0, source: 'SIMULATED' as const,
+    }));
+  it('rejects non-positive or non-finite capital', () => {
+    const candles = mk([100, 101, 102]);
+    expect(() => runBacktest(candles, 'ema-trend', 0)).toThrow();
+    expect(() => runBacktest(candles, 'ema-trend', Number.NaN)).toThrow();
+  });
+  it('empty and single-candle series produce a defined result', () => {
+    const empty = runBacktest(mk([]), 'ema-trend', CAPITAL);
+    expect(empty.equityCurve).toEqual([CAPITAL]);
+    const one = runBacktest(mk([100]), 'ema-trend', CAPITAL);
+    expect(one.equityCurve.every(Number.isFinite)).toBe(true);
+  });
+  it('a NaN close is carried forward, never poisoning the curve', () => {
+    const candles = mk([100, Number.NaN, 103, 104, 105]);
+    const res = runBacktest(candles, 'ema-trend', CAPITAL);
+    expect(res.equityCurve.every(Number.isFinite)).toBe(true);
+  });
+  it('a series with no valid close at all throws', () => {
+    expect(() => runBacktest(mk([Number.NaN, Number.NaN]), 'ema-trend', CAPITAL)).toThrow();
+  });
+});

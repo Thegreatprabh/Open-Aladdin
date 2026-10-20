@@ -21,6 +21,13 @@ Safety model
         Dhan in its response body; if the response has none, the call
         fails loudly instead of substituting a local id.
       - Paper and live orders are kept in separate stores.
+
+Order lifecycle & retry policy: identical to the Kite bridge — placement
+is single-shot (never auto-retried; reconcile after uncertain outcomes),
+an order id is an acknowledgement not a fill (read status/fills back via
+`get_orders()`), and the bridge is single-account: the broker enforces
+ownership against the authenticated account; there is no per-user
+isolation layer in this codebase yet.
 """
 
 from __future__ import annotations
@@ -356,6 +363,25 @@ class DhanBridge(_Seg):
                                          "orderStatus": o.status,
                                          **o.payload} if o else None)}
         return out
+
+    def reconcile(self) -> dict:
+        """Compare local order stores against Dhan's order book.
+        Buckets: matched / missing_at_broker / unknown_locally (see the
+        Kite bridge for semantics). Paper mode is trivially consistent."""
+        if not self.live:
+            return {"mode": "paper", "matched": sorted(self._orders),
+                    "missing_at_broker": [], "unknown_locally": []}
+        out = self.get_orders()
+        body = out.get("response")
+        rows = body if isinstance(body, list) else (
+            body.get("data", []) if isinstance(body, dict) else [])
+        broker_ids = {str(r["orderId"]) for r in rows
+                      if isinstance(r, dict) and r.get("orderId")}
+        local = set(self._live_orders)
+        return {"mode": "live",
+                "matched": sorted(local & broker_ids),
+                "missing_at_broker": sorted(local - broker_ids),
+                "unknown_locally": sorted(broker_ids - local)}
 
     def get_positions(self) -> dict:
         out = self._request("GET", "/positions")

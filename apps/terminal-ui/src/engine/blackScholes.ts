@@ -38,9 +38,24 @@ function d1d2(S: number, K: number, T: number, r: number, sigma: number): { d1: 
   return { d1, d2: d1 - vol };
 }
 
-/** Black-Scholes-Merton option price. */
+/** Inputs are valid iff spot/strike are positive and finite and T, r and
+ * sigma are finite. Invalid inputs yield NaN (never a fabricated number);
+ * callers must check Number.isFinite on the result. */
+export function validBsInputs(inp: BsInputs): boolean {
+  const { S, K, T, r, sigma } = inp;
+  return (
+    Number.isFinite(S) && S > 0 &&
+    Number.isFinite(K) && K > 0 &&
+    Number.isFinite(T) && T >= 0 &&
+    Number.isFinite(r) &&
+    Number.isFinite(sigma) && sigma >= 0
+  );
+}
+
+/** Black-Scholes-Merton option price. NaN for invalid inputs. */
 export function bsPrice(inp: BsInputs): number {
   const { S, K, T, r, sigma, type } = inp;
+  if (!validBsInputs(inp)) return Number.NaN;
   if (T <= 0) return type === 'CE' ? Math.max(S - K, 0) : Math.max(K - S, 0);
   if (sigma <= 0) {
     const disc = Math.exp(-r * T);
@@ -60,6 +75,15 @@ export function bsPrice(inp: BsInputs): number {
  */
 export function bsGreeks(inp: BsInputs): Greeks {
   const { S, K, T, r, sigma, type } = inp;
+  if (!validBsInputs(inp) || T <= 0 || sigma <= 0) {
+    // No meaningful Greeks without time/volatility or with invalid inputs:
+    // delta is the expiry step function, everything else is zero.
+    const itm = type === 'CE' ? S > K : S < K;
+    return {
+      delta: Number.isFinite(S) && Number.isFinite(K) ? (type === 'CE' ? (itm ? 1 : 0) : itm ? -1 : 0) : Number.NaN,
+      gamma: 0, theta: 0, vega: 0, rho: 0, vanna: 0, charm: 0, vomma: 0,
+    };
+  }
   const zero: Greeks = { delta: 0, gamma: 0, theta: 0, vega: 0, rho: 0, vanna: 0, charm: 0, vomma: 0 };
   if (T <= 0 || sigma <= 0) {
     const itm = type === 'CE' ? S > K : S < K;

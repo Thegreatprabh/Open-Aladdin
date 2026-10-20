@@ -242,6 +242,10 @@ export default function Surface3DView() {
           {badge('CALL WALL', fmt0(gex.callWall), 'text-bull')}
           {badge('PUT WALL', fmt0(gex.putWall), 'text-bear')}
           {badge('NET GEX', fmtCr(gex.netGexTotal), gex.netGexTotal >= 0 ? 'text-bull' : 'text-bear')}
+          <div className="bg-card border border-amber/50 rounded px-3 py-2 min-w-[130px]" title="GEX / IV surfaces are computed from the synthetically generated option chain, not live dealer positioning.">
+            <div className="text-[9px] tracking-widest text-amber">DATA SOURCE</div>
+            <div className="text-[15px] font-extrabold text-amber">SIMULATED</div>
+          </div>
         </div>
       </div>
 

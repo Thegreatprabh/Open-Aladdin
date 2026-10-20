@@ -250,6 +250,9 @@ export default function OptionsChainView() {
       {/* CHAIN TABLE */}
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex items-center gap-2 px-4 py-2.5 border-b border-edge bg-panel flex-wrap shrink-0">
+          <span className="px-2 py-0.5 rounded border border-amber/50 text-amber text-[10px] font-bold tracking-wider" title="This chain is generated synthetically by the simulator — it is not exchange OI/IV data.">
+            SIMULATED CHAIN
+          </span>
           {(['NIFTY', 'BANKNIFTY'] as const).map((u) => (
             <button key={u} onClick={() => setUnderlying(u)} className={`px-2.5 py-1 text-[11px] font-bold rounded ${underlying === u ? 'bg-amber text-base' : 'bg-card border border-edge text-gray-400'}`}>
               {u}
