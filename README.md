@@ -58,23 +58,23 @@ refresh them.
 
 **Command Deck** — live candlesticks, Level-2 depth, time & sales, order dock, paper positions:
 
-![Command Deck](assets/demo/01-command-deck.png)
+![Command Deck](assets/demo/IMG_2320.png)
 
 **3D GEX Surface** — implied-volatility / dealer-gamma mesh with spot, zero-gamma flip, call/put walls:
 
-![3D GEX Surface](assets/demo/02-3d-gex-surface.png)
+![3D GEX Surface](assets/demo/IMG_2321.png)
 
 **Options Chain** — 21-strike chain with full Greeks and an Iron Condor loaded in the payoff builder:
 
-![Options Payoff](assets/demo/03-options-payoff.png)
+![Options Payoff](assets/demo/IMG_2322.png)
 
 **Quant Backtester** — equity curve, 1,000-run Monte Carlo fan, drawdown and monthly heatmap:
 
-![Quant Backtester](assets/demo/04-quant-backtester.png)
+![Quant Backtester](assets/demo/IMG_2324.png)
 
 Animated walkthrough of the live views:
 
-![OPEN-ALADDIN demo](assets/demo/open-aladdin-demo.gif)
+![OPEN-ALADDIN demo](assets/demo/IMG_2319.gif)
 
 ---
 
