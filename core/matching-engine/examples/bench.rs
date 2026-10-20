@@ -28,8 +28,13 @@ fn main() {
         let _ = book.insert_order(Order::limit(i + 1, Side::Bid, price, 10, i));
     }
     let d1 = t0.elapsed();
-    println!("resting inserts : {:>10} orders in {:?}  ->  {:.0} orders/sec, {:.0} ns/order",
-             N, d1, N as f64 / d1.as_secs_f64(), d1.as_nanos() as f64 / N as f64);
+    println!(
+        "resting inserts : {:>10} orders in {:?}  ->  {:.0} orders/sec, {:.0} ns/order",
+        N,
+        d1,
+        N as f64 / d1.as_secs_f64(),
+        d1.as_nanos() as f64 / N as f64
+    );
     println!("  open orders in book: {}", book.open_order_count());
 
     // ---- 2. crossing inserts (each taker matches a resting order) ----
@@ -46,8 +51,14 @@ fn main() {
         trades += out.len();
     }
     let d2 = t1.elapsed();
-    println!("crossing inserts: {:>10} orders in {:?}  ->  {:.0} orders/sec, {:.0} ns/order ({} trades)",
-             N, d2, N as f64 / d2.as_secs_f64(), d2.as_nanos() as f64 / N as f64, trades);
+    println!(
+        "crossing inserts: {:>10} orders in {:?}  ->  {:.0} orders/sec, {:.0} ns/order ({} trades)",
+        N,
+        d2,
+        N as f64 / d2.as_secs_f64(),
+        d2.as_nanos() as f64 / N as f64,
+        trades
+    );
 
     // ---- 3. cancels ----
     let t2 = Instant::now();
@@ -55,6 +66,11 @@ fn main() {
         let _ = book.cancel_order(i + 1);
     }
     let d3 = t2.elapsed();
-    println!("cancels         : {:>10} orders in {:?}  ->  {:.0} orders/sec, {:.0} ns/order",
-             N, d3, N as f64 / d3.as_secs_f64(), d3.as_nanos() as f64 / N as f64);
+    println!(
+        "cancels         : {:>10} orders in {:?}  ->  {:.0} orders/sec, {:.0} ns/order",
+        N,
+        d3,
+        N as f64 / d3.as_secs_f64(),
+        d3.as_nanos() as f64 / N as f64
+    );
 }
