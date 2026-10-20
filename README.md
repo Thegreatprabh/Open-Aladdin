@@ -1,6 +1,6 @@
 # OPEN-ALADDIN
 
-### Institutional quantitative trading terminal, 3D gamma-exposure analytics and a low-latency orderflow engine — open source, MIT licensed.
+### Institutional-style quantitative trading terminal, 3D gamma-exposure analytics and a low-latency orderflow engine — open source, MIT licensed.
 
 ![OPEN-ALADDIN live terminal](assets/demo/hero-terminal-preview.svg)
 
@@ -9,18 +9,22 @@
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](core/matching-engine/Cargo.toml)
 [![TypeScript](https://img.shields.io/badge/typescript-5.x-3178c6.svg)](apps/terminal-ui/package.json)
 [![React](https://img.shields.io/badge/react-18-61dafb.svg)](apps/terminal-ui/package.json)
-[![Generated LOC](https://img.shields.io/badge/generated%20LOC-59000%2B-10b981.svg)](scripts/generate_50k_monorepo.py)
+[![CI](https://github.com/Thegreatprabh/Open-Aladdin/actions/workflows/ci.yml/badge.svg)](https://github.com/Thegreatprabh/Open-Aladdin/actions/workflows/ci.yml)
 
-OPEN-ALADDIN is a working quant research and paper-trading platform built as a monorepo. It has three parts that actually
+OPEN-ALADDIN is a quant research and paper-trading platform built as a monorepo. It has three parts that actually
 run: a **React web terminal** with a live market-microstructure simulator (no backend, no API keys, everything in the
 browser), a **Python quant engine** (Black–Scholes–Merton analytics through higher-order Greeks, Heston calibration,
 gamma-scalping and stat-arb strategies, broker bridges), and a **Rust matching engine** (price–time-priority limit order
-book, FIX 4.4 parser, SPAN-style risk gate). A generator script can expand the repo to 50,000+ lines of additional
-strategy modules, engine code, FIX schemas and synthetic Level-2 tick data.
+book, FIX 4.4 parser, SPAN-style risk gate).
 
-Everything in this repo has been executed and verified — Rust tests pass 24/24, every Python module runs end to end, the
-terminal builds cleanly with `tsc && vite build`, and the screenshots below were captured from the real built app, not
-mockups.
+Be clear about what this is: **the hand-written core is ~12,300 lines** (table below). There is also a generator
+script that can expand the repo with ~59,000 additional lines — that output is template-generated strategy code plus
+synthetic tick CSVs, it is **not committed to this repo**, and you should treat it as scaffolding, not as the project's
+substance. The substance is the code listed under [What's actually in here](#whats-actually-in-here).
+
+Everything claimed here is reproducible from a fresh clone: Rust tests pass 24/24 (`cargo test`), every Python module
+runs end to end, the terminal builds cleanly with `tsc && vite build`, CI re-checks all of it on every push, and the
+screenshots below were captured from the real built app, not mockups.
 
 ---
 
@@ -71,6 +75,39 @@ refresh them.
 Animated walkthrough of the live views:
 
 ![OPEN-ALADDIN demo](assets/demo/open-aladdin-demo.gif)
+
+---
+
+## What's actually in here
+
+Hand-written code only — generator output excluded:
+
+| Module | Lines | What it is | How it's verified |
+|---|---|---|---|
+| `apps/terminal-ui/src` | ~4,300 | React + TS terminal, 7 views, 4 quant engines | `npm run build` (tsc + vite) in CI |
+| `core/matching-engine/src` + `examples/` | ~1,470 | Rust LOB, FIX 4.4 parser, risk gate, bench | `cargo test` 24/24 in CI |
+| `quant-engine` | ~1,660 | BSM Greeks, Heston, 2 strategies, 2 broker bridges | every module executed in CI |
+| `scripts` | ~4,500 | 50k generator, capture script, release script | generator self-verifies ≥50k lines |
+| `distribution` | ~360 | awesome-list PRs, Reddit/HN/X launch copy | — |
+
+The terminal's live simulation runs on the **TypeScript engine in the browser**. The Rust engine and the Python engine
+are standalone, tested components — they are **not wired into the UI yet** (see [Roadmap](#roadmap)). The generator's
+output lives in `generated/` (gitignored by design) and is roughly half synthetic tick CSVs, half template-generated
+code — useful for load-testing and demos, not a substitute for the core above.
+
+### Benchmarks (measured, not promised)
+
+Single-threaded, 200k-order loops, release build, on a 2-vCPU AMD EPYC VM (Oct 2026):
+
+| Operation | Throughput | Per order |
+|---|---|---|
+| Resting inserts | 5.3M /sec | 189 ns |
+| Crossing inserts (matched) | 6.3M /sec | 158 ns |
+| Cancels | 4.2M /sec | 236 ns |
+
+Reproduce on your own machine: `cd core/matching-engine && cargo run --release --example bench`.
+Your numbers will differ — hot-cache loop throughput is not the same as production latency. Treat this as an
+indication of the engine's order of magnitude, not a latency guarantee.
 
 ---
 
@@ -212,15 +249,16 @@ cargo test      # 24/24 unit tests: LOB, iceberg orders, FIX 4.4 parser, risk ga
 cargo build --release
 ```
 
-### 5. Generate the 50,000+ line expansion (optional)
+### 5. Generate the expansion bundle (optional)
 
 ```bash
 python scripts/generate_50k_monorepo.py --out generated --seed 20261020
 ```
 
-This writes ~59,000 lines across 126 files into `generated/` — quant strategy modules, C++/Rust engine code, FIX 4.4
-schemas and seeded NIFTY 50 / BANKNIFTY Level-2 tick CSVs. It exits non-zero if the total falls below 50,000 lines, so
-the count is enforced, not claimed. (`generated/` is gitignored by default; delete it any time to reclaim ~60 MB.)
+This writes ~59,000 lines across 126 files into `generated/` — about 30,000 lines of seeded NIFTY 50 / BANKNIFTY
+Level-2 tick CSVs, plus template-generated strategy modules, C++/Rust engine code and FIX 4.4 schemas. The script
+exits non-zero if the total falls below 50,000 lines. **Note:** `generated/` is gitignored — it is *not* part of
+this repository, and deleting it loses nothing. Treat it as demo/load-test scaffolding.
 
 ### 6. Everything at once (Docker)
 
@@ -373,9 +411,14 @@ flowchart TB
         risk[Risk gate + kill switch]
     end
     gen[scripts/generate_50k_monorepo.py] -->|126 files, ~59k lines| expanded[generated/]
-    UI <-->|paper orders| RS
-    PY <-->|pricing + signals| UI
+    UI -.->|not yet wired — see Roadmap| RS
+    PY -.->|standalone, runs independently| UI
 ```
+
+**How it's wired today, honestly:** the terminal is self-contained — it runs on its own TypeScript market simulator
+in the browser. The Rust matching engine is a standalone library (verified by tests + the benchmark above) that is
+*not yet* connected to the UI; wiring it in via a WASM or Node binding is the first Roadmap item. The Python engine
+runs standalone too. Nothing in this diagram talks to a real exchange.
 
 ---
 
@@ -389,6 +432,9 @@ variables — never commit keys to the repo. Nothing in this project places real
 
 ## Roadmap
 
+- **Wire the Rust engine into the terminal** (WASM build or a Node sidecar) so paper orders match on the real LOB
+  instead of the TypeScript simulator. This is the known gap — until it lands, call the Rust core a tested library,
+  not a hot path.
 - Live WebSocket ingestion from broker market-data APIs (Kite Connect, DhanHQ) into the terminal's simulator.
 - Exchange calendar and corporate-action adjustments in the backtester.
 - More awesome-list entries and a hosted demo link.
