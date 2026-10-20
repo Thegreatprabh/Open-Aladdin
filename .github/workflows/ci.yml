@@ -18,6 +18,17 @@ on:
     branches: [main]
 
 jobs:
+  secrets:
+    name: secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   terminal:
     name: terminal-ui (Node 20)
     runs-on: ubuntu-latest
@@ -94,6 +105,8 @@ jobs:
           done
       - name: BSM correctness suite (reference vector, parity, bounds, IV)
         run: python quant-engine/tests/test_bsm_correctness.py
+      - name: Broker bridge honesty suite (mocked SDK/HTTP)
+        run: python quant-engine/tests/test_broker_bridges.py
       - name: API server input validation
         run: |
           pip install fastapi pydantic
