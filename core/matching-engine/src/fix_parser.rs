@@ -366,7 +366,7 @@ mod tests {
 
     fn sample_order() -> String {
         new_order_single(
-            "ALADDIN",
+            "ATLAS",
             "NSE",
             7,
             "20261020-03:30:00.000",
@@ -389,7 +389,7 @@ mod tests {
         assert_eq!(msg.side(), Some('1'));
         assert_eq!(msg.order_qty().unwrap(), Some(50.0));
         assert_eq!(msg.price().unwrap(), Some(24150.50));
-        assert_eq!(msg.get(49), Some("ALADDIN"));
+        assert_eq!(msg.get(49), Some("ATLAS"));
         assert_eq!(msg.get(56), Some("NSE"));
     }
 

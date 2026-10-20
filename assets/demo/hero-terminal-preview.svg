@@ -10,7 +10,7 @@
   <rect width="1200" height="560" rx="14" fill="url(#bg)" stroke="#1E293B"/>
   <!-- window chrome -->
   <circle cx="28" cy="24" r="6" fill="#F43F5E"/><circle cx="48" cy="24" r="6" fill="#F59E0B"/><circle cx="68" cy="24" r="6" fill="#10B981"/>
-  <text x="100" y="30" font-size="16" fill="#F59E0B" font-weight="bold" letter-spacing="3">OPEN-ALADDIN</text>
+  <text x="100" y="30" font-size="16" fill="#F59E0B" font-weight="bold" letter-spacing="3">OPEN-ATLAS</text>
   <text x="100" y="50" font-size="11" fill="#64748B">INSTITUTIONAL QUANT TERMINAL · LIVE SIM</text>
   <circle cx="1140" cy="30" r="6" fill="#10B981">
     <animate attributeName="opacity" values="1;0.25;1" dur="1.4s" repeatCount="indefinite"/>

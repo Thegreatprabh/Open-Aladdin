@@ -1,4 +1,4 @@
-//! OPEN-ALADDIN matching engine core.
+//! OPEN-ATLAS matching engine core.
 //!
 //! Three cooperating modules:
 //!

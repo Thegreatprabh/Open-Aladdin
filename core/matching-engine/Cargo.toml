@@ -1,15 +1,15 @@
 [package]
-name = "open-aladdin-matching-engine"
+name = "open-atlas-matching-engine"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-description = "OPEN-ALADDIN core matching engine: price-time priority limit order book, FIX 4.4 protocol parser, and pre-trade risk gate."
-repository = "https://github.com/open-aladdin/open-aladdin"
+description = "OPEN-ATLAS core matching engine: price-time priority limit order book, FIX 4.4 protocol parser, and pre-trade risk gate."
+repository = "https://github.com/open-atlas/open-atlas"
 keywords = ["matching-engine", "limit-order-book", "fix-protocol", "trading"]
 categories = ["finance"]
 
 [lib]
-name = "open_aladdin_matching_engine"
+name = "open_atlas_matching_engine"
 path = "src/lib.rs"
 
 [dependencies]

@@ -1,4 +1,4 @@
-//! Micro-benchmark for the OPEN-ALADDIN limit order book.
+//! Micro-benchmark for the OPEN-ATLAS limit order book.
 //!
 //! Run with:
 //!     cargo run --release --example bench
@@ -14,7 +14,7 @@
 
 use std::time::Instant;
 
-use open_aladdin_matching_engine::{Order, OrderBook, Side};
+use open_atlas_matching_engine::{Order, OrderBook, Side};
 
 const N: u64 = 200_000;
 
