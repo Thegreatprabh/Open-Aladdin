@@ -1,9 +1,11 @@
-# OPEN-ALADDIN CI — every push and PR must pass all three stacks.
+# OPEN-ATLAS CI — every push and PR must pass all three stacks.
 #
 # What this proves (and what it does not):
 #   - terminal-ui builds clean with tsc + vite (catches TS type errors and missing configs)
-#   - Rust engine: 24/24 unit tests + release build + bench example compiles
-#   - Python quant modules execute end to end; the 50k generator self-verifies >= 50,000 lines
+#   - Rust engine: unit tests (lib), rustfmt, clippy with zero warnings,
+#     release build, FIX gateway end-to-end over a real TCP socket, bench compiles
+#   - Python: quant modules execute; the BSM correctness suite validates prices,
+#     Greeks, implied-vol and no-arbitrage identities; the 50k generator self-verifies
 #   - It does NOT prove any performance claim — benchmarks are indicative only.
 #     Run core/matching-engine `cargo run --release --example bench` on your own hardware.
 
@@ -46,14 +48,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Tests
+        with:
+          components: rustfmt, clippy
+      - name: rustfmt check
+        working-directory: core/matching-engine
+        run: cargo fmt --check
+      - name: Unit tests
         working-directory: core/matching-engine
         run: cargo test --locked
+      - name: Clippy (zero warnings)
+        working-directory: core/matching-engine
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: cargo clippy --locked --all-targets
       - name: Release build (warnings fail)
         working-directory: core/matching-engine
         env:
           RUSTFLAGS: "-D warnings"
-        run: cargo build --release --locked
+        run: cargo build --release --locked --bin fix_gateway
+      - name: FIX gateway end-to-end over TCP
+        working-directory: core/matching-engine
+        run: |
+          cargo build --release --locked --bin fix_gateway
+          python3 e2e/gateway_e2e.py
       - name: Benchmark smoke run
         working-directory: core/matching-engine
         run: cargo run --release --locked --example bench
@@ -75,6 +92,25 @@ jobs:
             echo "--- $m ---"
             python "quant-engine/$m.py" > /dev/null || { echo "FAIL: $m"; exit 1; }
           done
+      - name: BSM correctness suite (reference vector, parity, bounds, IV)
+        run: python quant-engine/tests/test_bsm_correctness.py
+      - name: API server input validation
+        run: |
+          pip install fastapi pydantic
+          python - <<'EOF'
+          import sys
+          sys.path.insert(0, 'quant-engine')
+          from api_server import BsmRequest
+          from pydantic import ValidationError
+          for bad in [{"spot":100,"strike":100,"vol":-0.2,"ttm":1.0},
+                      {"spot":100,"strike":100,"vol":0.2,"ttm":0.0},
+                      {"spot":float("nan"),"strike":100,"vol":0.2,"ttm":1.0}]:
+              try:
+                  BsmRequest(**bad); sys.exit(f"FAIL: accepted {bad}")
+              except ValidationError:
+                  pass
+          print("API validation OK")
+          EOF
       - name: Brokers import with zero network
         run: python -c "import sys; sys.path.insert(0,'quant-engine'); import brokers.zerodha_kite_bridge, brokers.dhan_hq_bridge; print('brokers import OK, no network at import')"
 
