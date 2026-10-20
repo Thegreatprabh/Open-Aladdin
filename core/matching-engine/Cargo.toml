@@ -1,0 +1,23 @@
+[package]
+name = "open-aladdin-matching-engine"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "OPEN-ALADDIN core matching engine: price-time priority limit order book, FIX 4.4 protocol parser, and pre-trade risk gate."
+repository = "https://github.com/open-aladdin/open-aladdin"
+keywords = ["matching-engine", "limit-order-book", "fix-protocol", "trading"]
+categories = ["finance"]
+
+[lib]
+name = "open_aladdin_matching_engine"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1

@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  font-variant-numeric: tabular-nums;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #06080D;
+  color: #e5e7eb;
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0B0F17;
+}
+::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #06B6D4;
+}
+
+@keyframes tickflash {
+  0% { opacity: 0.35; }
+  100% { opacity: 1; }
+}
+.tick-flash {
+  animation: tickflash 0.35s ease-out;
+}
