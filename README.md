@@ -1,17 +1,17 @@
-# OPEN-ALADDIN
+# OPEN-ATLAS
 
 ### Institutional-style quantitative trading terminal, 3D gamma-exposure analytics and a low-latency orderflow engine — open source, MIT licensed.
 
-![OPEN-ALADDIN live terminal](assets/demo/hero-terminal-preview.svg)
+![OPEN-ATLAS live terminal](assets/demo/hero-terminal-preview.svg)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-amber.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](quant-engine/requirements.txt)
 [![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](core/matching-engine/Cargo.toml)
 [![TypeScript](https://img.shields.io/badge/typescript-5.x-3178c6.svg)](apps/terminal-ui/package.json)
 [![React](https://img.shields.io/badge/react-18-61dafb.svg)](apps/terminal-ui/package.json)
-[![CI](https://github.com/Thegreatprabh/Open-Aladdin/actions/workflows/ci.yml/badge.svg)](https://github.com/Thegreatprabh/Open-Aladdin/actions/workflows/ci.yml)
+[![CI](https://github.com/Thegreatprabh/Open-Atlas/actions/workflows/ci.yml/badge.svg)](https://github.com/Thegreatprabh/Open-Atlas/actions/workflows/ci.yml)
 
-OPEN-ALADDIN is a quant research and paper-trading platform built as a monorepo. It has three parts that actually
+OPEN-ATLAS is a quant research and paper-trading platform built as a monorepo. It has three parts that actually
 run: a **React web terminal** with a live market-microstructure simulator (no backend, no API keys, everything in the
 browser), a **Python quant engine** (Black–Scholes–Merton analytics through higher-order Greeks, Heston calibration,
 gamma-scalping and stat-arb strategies, broker bridges), and a **Rust matching engine** (price–time-priority limit order
@@ -34,19 +34,19 @@ Everything worth finding, in one place:
 
 | What | Where |
 |---|---|
-| This repository | <https://github.com/Thegreatprabh/Open-Aladdin> |
-| Web terminal (source) | [`apps/terminal-ui/`](https://github.com/Thegreatprabh/Open-Aladdin/tree/main/apps/terminal-ui) |
+| This repository | <https://github.com/Thegreatprabh/Open-Atlas> |
+| Web terminal (source) | [`apps/terminal-ui/`](https://github.com/Thegreatprabh/Open-Atlas/tree/main/apps/terminal-ui) |
 | Run the terminal locally | [Installation → Run the terminal UI](#2-run-the-terminal-ui) |
-| Deploy it yourself | [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FThegreatprabh%2FOpen-Aladdin&root-directory=apps/terminal-ui) — set build command to `npm run build`, output directory to `dist` |
-| Rust matching engine | [`core/matching-engine/`](https://github.com/Thegreatprabh/Open-Aladdin/tree/main/core/matching-engine) |
-| Python quant engine | [`quant-engine/`](https://github.com/Thegreatprabh/Open-Aladdin/tree/main/quant-engine) |
-| 50k-line expansion generator | [`scripts/generate_50k_monorepo.py`](https://github.com/Thegreatprabh/Open-Aladdin/blob/main/scripts/generate_50k_monorepo.py) |
-| Screenshot / GIF / hero capture script | [`scripts/viral_launch_kit.py`](https://github.com/Thegreatprabh/Open-Aladdin/blob/main/scripts/viral_launch_kit.py) |
-| One-click release script | [`scripts/push_and_release.sh`](https://github.com/Thegreatprabh/Open-Aladdin/blob/main/scripts/push_and_release.sh) |
-| Demo screenshots | [`assets/demo/`](https://github.com/Thegreatprabh/Open-Aladdin/tree/main/assets/demo) |
-| Launch & distribution kit | [`distribution/`](https://github.com/Thegreatprabh/Open-Aladdin/tree/main/distribution) |
+| Deploy it yourself | [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FThegreatprabh%2FOpen-Atlas&root-directory=apps/terminal-ui) — set build command to `npm run build`, output directory to `dist` |
+| Rust matching engine | [`core/matching-engine/`](https://github.com/Thegreatprabh/Open-Atlas/tree/main/core/matching-engine) |
+| Python quant engine | [`quant-engine/`](https://github.com/Thegreatprabh/Open-Atlas/tree/main/quant-engine) |
+| 50k-line expansion generator | [`scripts/generate_50k_monorepo.py`](https://github.com/Thegreatprabh/Open-Atlas/blob/main/scripts/generate_50k_monorepo.py) |
+| Screenshot / GIF / hero capture script | [`scripts/viral_launch_kit.py`](https://github.com/Thegreatprabh/Open-Atlas/blob/main/scripts/viral_launch_kit.py) |
+| One-click release script | [`scripts/push_and_release.sh`](https://github.com/Thegreatprabh/Open-Atlas/blob/main/scripts/push_and_release.sh) |
+| Demo screenshots | [`assets/demo/`](https://github.com/Thegreatprabh/Open-Atlas/tree/main/assets/demo) |
+| Launch & distribution kit | [`distribution/`](https://github.com/Thegreatprabh/Open-Atlas/tree/main/distribution) |
 | Math reference (BSM / GEX / SPAN) | [Quantitative core](#quantitative-core) |
-| Report a bug / ask a question | <https://github.com/Thegreatprabh/Open-Aladdin/issues> |
+| Report a bug / ask a question | <https://github.com/Thegreatprabh/Open-Atlas/issues> |
 
 ---
 
@@ -58,23 +58,23 @@ refresh them.
 
 **Command Deck** — live candlesticks, Level-2 depth, time & sales, order dock, paper positions:
 
-![Command Deck](assets/demo/IMG_2320.png)
+![Command Deck](assets/demo/01-command-deck.png)
 
 **3D GEX Surface** — implied-volatility / dealer-gamma mesh with spot, zero-gamma flip, call/put walls:
 
-![3D GEX Surface](assets/demo/IMG_2321.png)
+![3D GEX Surface](assets/demo/02-3d-gex-surface.png)
 
 **Options Chain** — 21-strike chain with full Greeks and an Iron Condor loaded in the payoff builder:
 
-![Options Payoff](assets/demo/IMG_2322.png)
+![Options Payoff](assets/demo/03-options-payoff.png)
 
 **Quant Backtester** — equity curve, 1,000-run Monte Carlo fan, drawdown and monthly heatmap:
 
-![Quant Backtester](assets/demo/IMG_2324.png)
+![Quant Backtester](assets/demo/04-quant-backtester.png)
 
 Animated walkthrough of the live views:
 
-![OPEN-ALADDIN demo](assets/demo/IMG_2319.gif)
+![OPEN-ATLAS demo](assets/demo/open-atlas-demo.gif)
 
 ---
 
@@ -119,8 +119,8 @@ per platform — pick yours and follow it top to bottom.
 ### 0. Clone the repo
 
 ```bash
-git clone https://github.com/Thegreatprabh/Open-Aladdin.git
-cd Open-Aladdin
+git clone https://github.com/Thegreatprabh/Open-Atlas.git
+cd Open-Atlas
 ```
 
 ### 1. Install prerequisites
@@ -203,7 +203,7 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:5173>. You should see the OPEN-ALADDIN terminal with the ticker tape flashing — that means the
+Open <http://localhost:5173>. You should see the OPEN-ATLAS terminal with the ticker tape flashing — that means the
 built-in market simulator is running. No backend, no keys, no real money: everything is simulated in your browser.
 
 To build the production bundle (this is what gets deployed or screenshotted):
@@ -294,7 +294,7 @@ make generate   # run the 50k-line generator
 ## Repository layout
 
 ```
-open-aladdin/
+open-atlas/
 ├── README.md
 ├── LICENSE                          # MIT
 ├── Makefile                         # install / test / build / generate targets
