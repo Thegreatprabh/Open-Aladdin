@@ -1,4 +1,4 @@
-# OPEN-ALADDIN — top-level build orchestration.
+# OPEN-ATLAS — top-level build orchestration.
 #
 #   make build        Build every component (Rust engine, Python env, UI)
 #   make test         Run the Rust matching-engine test suite
