@@ -15,9 +15,9 @@ OPEN-ATLAS is a quant research and paper-trading platform built as a monorepo. I
 run: a **React web terminal** with a live market-microstructure simulator (no backend, no API keys, everything in the
 browser), a **Python quant engine** (Black–Scholes–Merton analytics through higher-order Greeks, Heston calibration,
 gamma-scalping and stat-arb strategies, broker bridges), and a **Rust matching engine** (price–time-priority limit order
-book, FIX 4.4 parser, SPAN-style risk gate).
+book, FIX 4.4 parser, percentage-of-notional risk gate).
 
-Be clear about what this is: **the hand-written core is ~12,300 lines** (table below). There is also a generator
+Be clear about what this is: **the hand-written core is ~11,400 lines** (table below). There is also a generator
 script that can expand the repo with ~59,000 additional lines — that output is template-generated strategy code plus
 synthetic tick CSVs, it is **not committed to this repo**, and you should treat it as scaffolding, not as the project's
 substance. The substance is the code listed under [What's actually in here](#whats-actually-in-here).
@@ -41,20 +41,16 @@ Everything worth finding, in one place:
 | Rust matching engine | [`core/matching-engine/`](https://github.com/Thegreatprabh/Open-Atlas/tree/main/core/matching-engine) |
 | Python quant engine | [`quant-engine/`](https://github.com/Thegreatprabh/Open-Atlas/tree/main/quant-engine) |
 | 50k-line expansion generator | [`scripts/generate_50k_monorepo.py`](https://github.com/Thegreatprabh/Open-Atlas/blob/main/scripts/generate_50k_monorepo.py) |
-| Screenshot / GIF / hero capture script | [`scripts/viral_launch_kit.py`](https://github.com/Thegreatprabh/Open-Atlas/blob/main/scripts/viral_launch_kit.py) |
-| One-click release script | [`scripts/push_and_release.sh`](https://github.com/Thegreatprabh/Open-Atlas/blob/main/scripts/push_and_release.sh) |
 | Demo screenshots | [`assets/demo/`](https://github.com/Thegreatprabh/Open-Atlas/tree/main/assets/demo) |
-| Launch & distribution kit | [`distribution/`](https://github.com/Thegreatprabh/Open-Atlas/tree/main/distribution) |
-| Math reference (BSM / GEX / SPAN) | [Quantitative core](#quantitative-core) |
+| Math reference (BSM / GEX / margin) | [Quantitative core](#quantitative-core) |
 | Report a bug / ask a question | <https://github.com/Thegreatprabh/Open-Atlas/issues> |
 
 ---
 
 ## Screenshots
 
-Captured automatically from the built terminal with
-[`scripts/viral_launch_kit.py`](scripts/viral_launch_kit.py) (Playwright, 1440×900 @2x). Re-run the script any time to
-refresh them.
+Captured from the real built terminal with Playwright (1440×900 @2x) — these are actual screenshots,
+not mockups.
 
 **Command Deck** — live candlesticks, Level-2 depth, time & sales, order dock, paper positions:
 
@@ -87,8 +83,7 @@ Hand-written code only — generator output excluded:
 | `apps/terminal-ui/src` | ~4,300 | React + TS terminal, 7 views, 4 quant engines | `npm run build` (tsc + vite) in CI |
 | `core/matching-engine/src` + `examples/` | ~1,470 | Rust LOB, FIX 4.4 parser, risk gate, bench | `cargo test` 24/24 in CI |
 | `quant-engine` | ~1,660 | BSM Greeks, Heston, 2 strategies, 2 broker bridges | every module executed in CI |
-| `scripts` | ~4,500 | 50k generator, capture script, release script | generator self-verifies ≥50k lines |
-| `distribution` | ~360 | awesome-list PRs, Reddit/HN/X launch copy | — |
+| `scripts` | ~4,000 | 50k generator only (verified run: 59,251 lines / 126 files) | generator self-verifies ≥50k lines |
 
 The terminal's live simulation runs on the **TypeScript engine in the browser**. The Rust engine and the Python engine
 are standalone, tested components — they are **not wired into the UI yet** (see [Roadmap](#roadmap)). The generator's
@@ -311,10 +306,7 @@ open-atlas/
 ├── core/matching-engine/            # Rust: price-time LOB, iceberg, FIX 4.4, risk gate
 ├── quant-engine/                    # Python: BSM Greeks, Heston, strategies, brokers
 ├── scripts/
-│   ├── generate_50k_monorepo.py     # verified 50k+ line expansion generator
-│   ├── viral_launch_kit.py          # automated screenshot/GIF/SVG capture
-│   └── push_and_release.sh          # one-click topics + v1.0.0 release
-└── distribution/                    # awesome-list PRs, Reddit posts, Show HN + X thread
+│   └── generate_50k_monorepo.py     # verified 50k+ line expansion generator
 ```
 
 ---
@@ -324,7 +316,7 @@ open-atlas/
 Seven modules, all interactive — no dead buttons:
 
 1. **Command Deck** — live candlesticks (1m–1D, VWAP/EMA20/Bollinger/order blocks), Level-2 DOM ladder with
-   click-to-limit, time & sales tape, and an order dock wired to a ₹1,00,00,000 paper account with SPAN-style margin
+   click-to-limit, time & sales tape, and an order dock wired to a ₹1,00,00,000 paper account with percentage-of-notional margin
    checks, live MTM, net portfolio Greeks, square-off, delta-hedge and a flatten-all kill switch.
 2. **3D GEX Surface** — implied-volatility and net dealer-gamma meshes (software-rendered 3D: drag to rotate, scroll to
    zoom, hover to inspect), with computed spot, zero-gamma flip, call wall, put wall and net GEX badges.
@@ -363,10 +355,11 @@ test vector is on the order of $10^{-15}$.
 
 ### Dealer gamma exposure (GEX)
 
-For each strike, dealer gamma exposure aggregates open interest times gamma, signed by who is long the option:
+For each strike, dealer gamma exposure aggregates open interest times gamma. The sign convention is the common
+one, and it is the one `gexCalculator.ts` implements: call exposure counts positive, put exposure negative.
 
-$$\mathrm{GEX}_K = \sum_{\text{calls}} \mathrm{OI} \cdot \Gamma \cdot S^2 \cdot (-1)
-               + \sum_{\text{puts}} \mathrm{OI} \cdot \Gamma \cdot S^2 \cdot (+1)$$
+$$\mathrm{GEX}_K = \sum_{\text{calls}} \mathrm{OI} \cdot \Gamma \cdot S^2 \cdot (+1)
+               + \sum_{\text{puts}} \mathrm{OI} \cdot \Gamma \cdot S^2 \cdot (-1)$$
 
 The **zero-gamma flip** is the strike where net GEX crosses zero (found by bisection); **call/put walls** are the
 strikes with the largest absolute call-side and put-side exposure. These are the levels the 3D surface view marks on
@@ -377,11 +370,13 @@ the mesh.
 `quant-engine/pricing/heston_calibration.py` prices under the Heston stochastic-volatility model with the COS method
 and calibrates the five Heston parameters to a smile of market IVs, reporting RMSE in volatility points.
 
-### SPAN-style margin (risk gate)
+### Margin model (risk gate)
 
-`core/matching-engine/src/risk_gate.rs` applies exchange-style margining: options positions are margined at ~15% of
-notional, equity at ~20%, with fat-finger price collars and a kill switch that flattens everything. Orders that would
-breach margin are rejected with the exact shortfall — the same number the terminal shows in the order dock.
+Margin here is a flat **percentage of notional** — deliberately simple, and not exchange SPAN. The terminal
+simulator blocks ~15% of notional for options positions and ~20% for equity, and rejects orders that would breach
+it with the exact shortfall shown in the order dock. The Rust risk gate
+(`core/matching-engine/src/risk_gate.rs`) estimates initial margin the same way — notional × (price-scan % +
+extreme-loss %), 10% at the shipped defaults (8% + 2%) — alongside fat-finger price collars and a kill switch.
 
 ---
 

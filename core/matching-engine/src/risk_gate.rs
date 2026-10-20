@@ -8,13 +8,12 @@
 //! 3. **Value limit** — per-order maximum notional (`price × qty`).
 //! 4. **Fat-finger check** — limit price may not deviate from the reference
 //!    (last traded / index) price by more than a configured percentage.
-//! 5. **Margin check** — SPAN-style margin estimate must fit within the
+//! 5. **Margin check** — the percentage-of-notional margin estimate must fit within the
 //!    account's available margin.
 //!
-//! The margin model is a documented simplification of NSE SPAN: the initial
-//! margin is the loss under a worst-case underlying move (the *price scan
-//! range*) plus an *extreme loss margin* add-on, both expressed as a
-//! percentage of notional:
+//! The margin model is a flat percentage of notional: the initial margin is
+//! a *price scan range* percentage of notional plus an *extreme loss margin*
+//! add-on:
 //!
 //! ```text
 //! margin = notional × (scan_pct + extreme_loss_pct)
@@ -86,8 +85,8 @@ pub struct RiskGate {
     pub max_order_value: f64,
     /// Maximum allowed deviation from the reference price, in percent.
     pub fat_finger_pct: f64,
-    /// SPAN price scan range as a fraction of notional (e.g. 0.08 = 8%).
-    pub span_scan_pct: f64,
+    /// Price scan range as a fraction of notional (e.g. 0.08 = 8%).
+    pub price_scan_pct: f64,
     /// Extreme-loss-margin add-on as a fraction of notional.
     pub extreme_loss_pct: f64,
     kill_switch: AtomicBool,
@@ -96,13 +95,13 @@ pub struct RiskGate {
 impl Default for RiskGate {
     /// Sensible defaults for an index-derivatives desk (NIFTY-style):
     /// 1,00,000 units / ₹5 crore per order, 5% fat-finger band, and a
-    /// SPAN-style margin of 8% scan + 2% extreme loss ≈ 10% of notional.
+    /// Percentage-of-notional margin: 8% price scan + 2% extreme loss ≈ 10% of notional.
     fn default() -> Self {
         RiskGate {
             max_order_qty: 100_000,
             max_order_value: 50_000_000.0,
             fat_finger_pct: 5.0,
-            span_scan_pct: 0.08,
+            price_scan_pct: 0.08,
             extreme_loss_pct: 0.02,
             kill_switch: AtomicBool::new(false),
         }
@@ -114,14 +113,14 @@ impl RiskGate {
         max_order_qty: u64,
         max_order_value: f64,
         fat_finger_pct: f64,
-        span_scan_pct: f64,
+        price_scan_pct: f64,
         extreme_loss_pct: f64,
     ) -> Self {
         RiskGate {
             max_order_qty,
             max_order_value,
             fat_finger_pct,
-            span_scan_pct,
+            price_scan_pct,
             extreme_loss_pct,
             kill_switch: AtomicBool::new(false),
         }
@@ -142,12 +141,12 @@ impl RiskGate {
         self.kill_switch.load(Ordering::SeqCst)
     }
 
-    /// SPAN-style initial margin estimate for a position of `qty` units in
+    /// Percentage-of-notional initial margin estimate for a position of `qty` units in
     /// an instrument on `underlying_price`:
-    /// `notional × (span_scan_pct + extreme_loss_pct)`.
-    pub fn span_margin_estimate(&self, underlying_price: f64, qty: u64) -> f64 {
+    /// `notional × (price_scan_pct + extreme_loss_pct)`.
+    pub fn margin_estimate(&self, underlying_price: f64, qty: u64) -> f64 {
         let notional = underlying_price * qty as f64;
-        notional * (self.span_scan_pct + self.extreme_loss_pct)
+        notional * (self.price_scan_pct + self.extreme_loss_pct)
     }
 
     /// Run every pre-trade check. Returns `Ok(())` only if the order may be
@@ -176,7 +175,7 @@ impl RiskGate {
                 limit_pct: self.fat_finger_pct,
             });
         }
-        let required = self.span_margin_estimate(req.underlying_price, req.qty);
+        let required = self.margin_estimate(req.underlying_price, req.qty);
         if required > req.available_margin {
             return Err(RiskError::InsufficientMargin {
                 required,
@@ -259,7 +258,7 @@ mod tests {
     fn margin_estimate_and_shortfall() {
         let gate = RiskGate::default();
         // 50 units × ₹24,140 × (8% + 2%) = ₹120,700 required.
-        let required = gate.span_margin_estimate(24_140.0, 50);
+        let required = gate.margin_estimate(24_140.0, 50);
         assert!((required - 120_700.0).abs() < 0.01);
 
         let mut req = ok_request();

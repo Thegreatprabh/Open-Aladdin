@@ -7,7 +7,7 @@
 //! * [`fix_parser`] — a FIX 4.4 `tag=value` wire protocol parser/serializer
 //!   with BodyLength and CheckSum validation.
 //! * [`risk_gate`] — a pre-trade risk gate enforcing quantity/value limits,
-//!   fat-finger deviation checks, SPAN-style margin estimation and a
+//!   fat-finger deviation checks, percentage-of-notional margin estimation and a
 //!   kill switch.
 //!
 //! Typical flow: a FIX `NewOrderSingle` is parsed by [`fix_parser`], checked

@@ -1,7 +1,7 @@
 // OPEN-ATLAS — master application shell.
 // Layout: header ticker / sidebar / routed views. Owns the market engine
 // loop, the ₹1,00,00,000 institutional paper account, order execution with
-// SPAN+exposure margin blocking, live MTM marking and net portfolio Greeks.
+// Percentage-of-notional margin blocking, live MTM marking and net portfolio Greeks.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
@@ -154,7 +154,7 @@ export default function App() {
       const orderDir: 1 | -1 = o.side === 'BUY' ? 1 : -1;
       const existingDir = existing ? (existing.side === 'LONG' ? 1 : -1) : 0;
 
-      // Margin: SPAN + exposure proxy — options 15%, equity 20%.
+      // Margin: percentage of notional — options 15%, equity 20%.
       const marginRate = o.instrumentType === 'OPTION' ? 0.15 : 0.2;
       const sameDirection = !existing || existingDir === orderDir;
       const closingQty = existing && !sameDirection ? Math.min(o.qty, existing.qty) : 0;

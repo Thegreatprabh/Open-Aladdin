@@ -7,7 +7,7 @@ Programmatically generates 50,000+ lines of *real* quantitative content:
   * Python quant modules   — Black-Scholes-Merton pricers per instrument family,
                              per-strike / per-expiry Greeks ladders, dealer GEX
                              calculators, mean-reversion / momentum / vol-arb /
-                             gamma-scalping strategy engines, SPAN margin models.
+                             gamma-scalping strategy engines, percentage-of-notional margin models.
   * C++17 headers          — price-time priority order book, SPSC lock-free ring
                              buffer, FIX 4.4 codec, venue-specialised books.
   * Rust modules           — strategy adapters and pre-trade risk checks.
@@ -1418,11 +1418,11 @@ CONDOR_SETS = [
     ("finnifty_butterfly", "FINNIFTY Iron Butterfly", "FINNIFTY", "IRON_BUTTERFLY", 0.08, 0.50, 0.02, 25),
 ]
 
-RISK_TEMPLATE = '''"""SPAN-style margin & risk gate model: __NAME__.
+RISK_TEMPLATE = '''"""Percentage-of-notional margin & risk gate model: __NAME__.
 
 Simplified Standard Portfolio Analysis of Risk for __SEGMENT__ positions:
 scans a 16-scenario grid (price +/- __SCAN_PCT__ in thirds, vol +/- __VOL_SHOCK__)
-and takes the worst-case loss as the SPAN requirement, then adds exposure and
+and takes the worst-case loss as the margin requirement, then adds exposure and
 additional margins. Also implements the fat-finger gate: rejects orders whose
 price deviates more than __FATFINGER_PCT__ from the reference price or whose
 quantity exceeds __MAX_QTY__.
@@ -1441,7 +1441,7 @@ MAX_ORDER_VALUE = __MAX_ORDER_VALUE__
 
 
 def span_scenarios():
-    """16 SPAN scenarios: (price shock fraction, vol shock)."""
+    """16 margin scenarios: (price shock fraction, vol shock)."""
     thirds = [-1.0, -2.0 / 3.0, -1.0 / 3.0, 0.0, 1.0 / 3.0, 2.0 / 3.0, 1.0]
     out = []
     for i, p in enumerate(thirds):
@@ -1469,7 +1469,7 @@ def worst_loss(position_greeks, spot, vol):
 
 
 def margin_required(position_greeks, spot, vol, notional):
-    """SPAN + exposure + additional margin, in INR."""
+    """Scan + exposure + additional margin, in INR."""
     span = worst_loss(position_greeks, spot, vol)
     exposure = notional * EXPOSURE_PCT
     additional = notional * ADDITIONAL_PCT
@@ -2433,7 +2433,7 @@ CPP_RISK = r'''// risk_checks.hpp — pre-trade risk gate for the matching engin
 //   1. fat-finger price band vs the reference (last trade / mid),
 //   2. maximum order quantity and notional caps,
 //   3. per-client position limits on the symbol,
-//   4. SPAN-style worst-scenario margin availability,
+//   4. Worst-scenario margin availability (percentage of notional),
 //   5. kill switch: flatten-only mode once the day-loss limit is hit.
 #pragma once
 
@@ -2451,8 +2451,8 @@ struct RiskParams {
     double max_order_value = 5.0e8;    // INR 50 crore per order
     Qty position_limit = 500000;       // per client per symbol
     double day_loss_limit = 0.05;      // 5% of start-of-day equity
-    double scan_range_pct = 0.035;     // SPAN price scan range (NFO)
-    double vol_shock = 0.25;           // SPAN vol shock
+    double scan_range_pct = 0.035;     // price scan range (NFO)
+    double vol_shock = 0.25;           // vol shock
 };
 
 struct GateResult {
@@ -2490,7 +2490,7 @@ public:
         return {true, ""};
     }
 
-    // Simplified SPAN: worst of +/- scan range scenarios on the order's delta.
+    // Simplified margin: worst of +/- scan range scenarios on the order's delta.
     double span_margin(const Order& o, Price /*reference*/) const {
         const double notional = to_price(o.price) * static_cast<double>(o.leaves);
         const double price_risk = notional * params_.scan_range_pct;
@@ -3083,7 +3083,7 @@ RUST_ADAPTERS = [
 
 RUST_RISK = r'''//! Pre-trade risk checks: __NAME__
 //!
-//! Segment: __SEGMENT__. Mirrors the Python SPAN model in
+//! Segment: __SEGMENT__. Mirrors the Python margin model in
 //! quant/risk/ so the hot path can veto an order in under a microsecond:
 //! fat-finger band, max qty / notional, position limit, margin estimate,
 //! and the day-loss kill switch.
@@ -3125,7 +3125,7 @@ pub enum Verdict {
     Reject(&'static str),
 }
 
-/// Worst-scenario margin estimate for one order (SPAN-style scan).
+/// Worst-scenario margin estimate for one order (percentage-of-notional scan).
 pub fn span_margin(order: &GateOrder, tick_value: f64) -> f64 {
     let notional = (order.price_ticks as f64) * tick_value * (order.qty as f64);
     let price_risk = notional.abs() * PARAMS.scan_range_pct;

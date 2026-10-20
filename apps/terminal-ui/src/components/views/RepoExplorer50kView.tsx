@@ -253,7 +253,7 @@ const FILES: Record<string, { lang: string; content: string }> = {
     'pub fn parse_new_order(buf: &[u8]) -> Option<(u64, [u8; 12], u8, u64, u8, i64)> { /* ... */ }',
   ].join('\n') },
   'core/matching-engine/src/risk_gate.rs': { lang: 'rust', content: [
-    '/// Pre-trade risk: SPAN-style margin check + fat-finger kill switch.',
+    '/// Pre-trade risk: percentage-of-notional margin check + fat-finger kill switch.',
     'pub struct RiskGate { pub max_notional: u64, pub max_qty: u64,',
     '    pub price_band_bps: u64, pub kill_switch: bool }',
     'impl RiskGate {',
@@ -263,7 +263,7 @@ const FILES: Record<string, { lang: string; content: string }> = {
     '        if qty > self.max_qty { return Err("QTY_LIMIT"); }',
     '        let dev = ((px - ref_px).abs() as u64 * 10_000) / ref_px.max(1) as u64;',
     '        if dev > self.price_band_bps { return Err("FAT_FINGER_BAND"); }',
-    '        Ok(notional * 15 / 100) // SPAN + exposure proxy',
+    '        Ok(notional * 15 / 100) // percentage-of-notional margin',
     '    }',
     '}',
   ].join('\n') },
@@ -502,7 +502,7 @@ function generate50kBundle(): { text: string; lines: number; sections: [string, 
   // 3) 5 Rust risk/FIX modules × ~600 lines
   before = out.length;
   for (let r = 0; r < 5; r++) {
-    out.push(`// ==== risk/gate_${r}.rs : pre-trade SPAN gate, shard ${r} ====`);
+    out.push(`// ==== risk/gate_${r}.rs : pre-trade margin gate, shard ${r} ====`);
     out.push(`pub struct Gate${r} { pub max_notional: u64, pub band_bps: u64 }`);
     for (let i = 0; i < 90; i++) {
       out.push(`/// check_${i}: notional cap ${(r + 1) * (i + 1) * 100000}u + fat-finger band`);
