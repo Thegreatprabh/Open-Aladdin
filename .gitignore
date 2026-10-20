@@ -7,6 +7,11 @@ __pycache__/
 *.pyc
 .venv/
 
+# Secrets — never commit these. Ever.
+.env
+.env.*
+!.env.example
+
 # Node
 node_modules/
 dist/
