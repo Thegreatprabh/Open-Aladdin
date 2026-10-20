@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# push_and_release.sh — one-click GitHub push + topics + v1.0.0 release for OPEN-ALADDIN.
+# push_and_release.sh — one-click GitHub push + topics + v1.0.0 release for OPEN-ATLAS.
 #
 # What it does:
 #   1. Inits git (if needed), commits the full monorepo cleanly (~70,000+ lines
@@ -23,7 +23,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 OWNER="Thegreatprabh"
-REPO="Open-Aladdin"
+REPO="Open-Atlas"
 TAG="v1.0.0"
 REMOTE_URL="https://github.com/${OWNER}/${REPO}.git"
 
@@ -41,7 +41,7 @@ run() {
   if [ "$DRY_RUN" -eq 1 ]; then echo "  [dry-run] $*"; else "$@"; fi
 }
 
-echo "==> OPEN-ALADDIN push & release"
+echo "==> OPEN-ATLAS push & release"
 echo "    root: $REPO_ROOT"
 
 # --- 1. git init (idempotent) ----------------------------------------------
@@ -83,7 +83,7 @@ echo "    code/data lines staged: ${TOTAL_LINES:-unknown}"
 if git diff --cached --quiet; then
   echo "==> nothing new to commit — skipping commit"
 else
-  run git commit -m "OPEN-ALADDIN ${TAG}: terminal, quant + matching engines, 50k generator, launch kit
+  run git commit -m "OPEN-ATLAS ${TAG}: terminal, quant + matching engines, 50k generator, launch kit
 
 ${TOTAL_LINES:-?} lines across Rust / Python / TypeScript / C++ / FIX schemas /
 synthetic Level-2 tick data. Rust 24/24 tests green, terminal builds clean
@@ -123,7 +123,7 @@ fi
 
 # --- 6. v1.0.0 release -------------------------------------------------------
 echo "==> cutting release ${TAG}"
-NOTES="OPEN-ALADDIN v1.0.0 — institutional quant terminal, 3D gamma-exposure analytics and low-latency orderflow engine.
+NOTES="OPEN-ATLAS v1.0.0 — institutional quant terminal, 3D gamma-exposure analytics and low-latency orderflow engine.
 
 Highlights:
 - React + TypeScript web terminal with live market simulator (7 modules, Ctrl+K palette)
@@ -134,12 +134,12 @@ Highlights:
 
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   if ! gh release view "$TAG" --repo "${OWNER}/${REPO}" >/dev/null 2>&1; then
-    run gh release create "$TAG" --repo "${OWNER}/${REPO}" --title "OPEN-ALADDIN ${TAG}" --notes "$NOTES"
+    run gh release create "$TAG" --repo "${OWNER}/${REPO}" --title "OPEN-ATLAS ${TAG}" --notes "$NOTES"
   else
     echo "    release $TAG already exists — skipping create"
   fi
-  if [ -f assets/demo/open-aladdin-demo.gif ]; then
-    run gh release upload "$TAG" assets/demo/open-aladdin-demo.gif --repo "${OWNER}/${REPO}" --clobber
+  if [ -f assets/demo/open-atlas-demo.gif ]; then
+    run gh release upload "$TAG" assets/demo/open-atlas-demo.gif --repo "${OWNER}/${REPO}" --clobber
   fi
 else
   echo "    WARNING: gh not authenticated — create the release manually at:"

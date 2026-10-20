@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-viral_launch_kit.py — OPEN-ALADDIN viral media + launch kit generator.
+viral_launch_kit.py — OPEN-ATLAS viral media + launch kit generator.
 
 Captures REAL screenshots of the built terminal-ui (Playwright, 1440x900 @2x),
 stitches an animated demo GIF from live captures, and renders an animated
@@ -131,7 +131,7 @@ def make_gif(shots: dict[str, Path], out_dir: Path) -> Path:
         im = im.resize((w, h), Image.LANCZOS).convert("P", palette=Image.ADAPTIVE, colors=128)
         frames.append((im, dur))
 
-    gif_path = out_dir / "open-aladdin-demo.gif"
+    gif_path = out_dir / "open-atlas-demo.gif"
     frames[0][0].save(
         gif_path, save_all=True, loop=0,
         append_images=[f for f, _ in frames[1:]],
@@ -229,7 +229,7 @@ def make_hero_svg(out_dir: Path) -> Path:
   <rect width="{W}" height="{H}" rx="14" fill="url(#bg)" stroke="#1E293B"/>
   <!-- window chrome -->
   <circle cx="28" cy="24" r="6" fill="#F43F5E"/><circle cx="48" cy="24" r="6" fill="#F59E0B"/><circle cx="68" cy="24" r="6" fill="#10B981"/>
-  <text x="100" y="30" font-size="16" fill="#F59E0B" font-weight="bold" letter-spacing="3">OPEN-ALADDIN</text>
+  <text x="100" y="30" font-size="16" fill="#F59E0B" font-weight="bold" letter-spacing="3">OPEN-ATLAS</text>
   <text x="100" y="50" font-size="11" fill="#64748B">INSTITUTIONAL QUANT TERMINAL · LIVE SIM</text>
   <circle cx="1140" cy="30" r="6" fill="#10B981">
     <animate attributeName="opacity" values="1;0.25;1" dur="1.4s" repeatCount="indefinite"/>
