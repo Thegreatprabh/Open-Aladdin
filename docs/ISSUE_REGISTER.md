@@ -42,6 +42,13 @@ Baseline re-verified 2026-10-20 before changes: CI run #30 all-green on main
 | FE-1 | Medium | `apps/terminal-ui/src/App.tsx` `placeOrder` | Quantity was never validated: 0, negative, or NaN quantities from the order form reached margin/position math | Form relied on the input's `min` attribute | `placeOrder` rejects non-integer / non-positive / non-finite quantities and invalid limit prices before any accounting | `npm run build` (type check) + code path verified | Verified |
 | ST-1 | Info | `backtestEngine.ts`, `stat_arb_kalman.py` | Look-ahead audit | — | Reviewed: TS signals use trailing windows only and positions earn returns from the next bar; Kalman filter updates causally with trade-at-signal-close convention and explicit costs; both operate on labelled synthetic data and make no profitability claims | Code inspection (this register) | Verified |
 
+## Round 3 — merge + frontend test runner (2026-10-20)
+
+| ID | Sev | Location | Issue | Fix | Evidence | Status |
+|---|---|---|---|---|---|---|
+| FE-2 | Medium | `apps/terminal-ui` | No frontend unit-test runner existed (largest remaining test gap) | Vitest 2 + 32 tests: Black-Scholes canonical vector/parity/bounds/IV round-trip, backtest determinism + prefix-invariance causality (all 3 strategies), MC band ordering, GEX sign convention, formatters | `npx vitest run` 32/32; `npm test` added to CI; `npm run build` green | Verified |
+| — | — | PR #1 | Round-2 branch unmerged | Merged into `main` after CI run #32 went all-green (incl. gitleaks secret scan) | GitHub PR #1, merged 2026-10-20 | Verified |
+
 ## Known limitations (explicitly NOT fixed in this pass)
 
 - **No live market data.** No authorized live provider is connected; every price in the
@@ -52,8 +59,12 @@ Baseline re-verified 2026-10-20 before changes: CI run #30 all-green on main
   described as a production FIX session.
 - **Broker bridges** (Python) remain paper-mode wrappers around official REST APIs and
   have never been exercised against a real broker sandbox in this repo's CI.
-- **Frontend financial-calculation unit tests** (order/P&L reconciliation) are not yet a
-  test suite — the terminal has no test runner configured. Register stays honest: this
-  is the largest remaining test gap (see Phase 8 of the transformation brief).
+- **Frontend test runner — CLOSED in Round 3.** Vitest is configured and 32 unit
+  tests cover Black-Scholes (same canonical vectors as the Python suite), the
+  backtest engine (including prefix-invariance causality — no look-ahead — for all
+  three strategies), GEX sign conventions, and the en-IN formatters. Order/P&L
+  reconciliation tests specifically remain a smaller follow-up.
 - Docker end-to-end (`docker compose up`) could not be executed in the audit
-  environment (no Docker daemon); services were verified natively instead.
+  environment (no Docker daemon — rechecked 2026-10-20: no docker binary at all);
+  services were verified natively instead. This is the one item that cannot be
+  closed from this environment.
