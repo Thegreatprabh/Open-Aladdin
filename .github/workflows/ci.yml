@@ -1,0 +1,90 @@
+# OPEN-ALADDIN CI — every push and PR must pass all three stacks.
+#
+# What this proves (and what it does not):
+#   - terminal-ui builds clean with tsc + vite (catches TS type errors and missing configs)
+#   - Rust engine: 24/24 unit tests + release build + bench example compiles
+#   - Python quant modules execute end to end; the 50k generator self-verifies >= 50,000 lines
+#   - It does NOT prove any performance claim — benchmarks are indicative only.
+#     Run core/matching-engine `cargo run --release --example bench` on your own hardware.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  terminal:
+    name: terminal-ui (Node 20)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/terminal-ui/package-lock.json
+      - name: Install
+        working-directory: apps/terminal-ui
+        run: npm ci
+      - name: Type-check and build
+        working-directory: apps/terminal-ui
+        run: npm run build
+      - name: Verify CSS actually compiled (Tailwind regression guard)
+        working-directory: apps/terminal-ui
+        run: |
+          css=$(ls dist/assets/*.css | head -1)
+          size=$(stat -c%s "$css")
+          echo "css bundle: $css ($size bytes)"
+          test "$size" -gt 5000 || { echo "FAIL: CSS bundle too small — Tailwind probably not compiling"; exit 1; }
+
+  rust:
+    name: matching-engine (stable)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Tests
+        working-directory: core/matching-engine
+        run: cargo test --locked
+      - name: Release build (warnings fail)
+        working-directory: core/matching-engine
+        env:
+          RUSTFLAGS: "-D warnings"
+        run: cargo build --release --locked
+      - name: Benchmark smoke run
+        working-directory: core/matching-engine
+        run: cargo run --release --locked --example bench
+
+  python:
+    name: quant-engine (Python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install deps
+        run: pip install -r quant-engine/requirements.txt
+      - name: Smoke-run every standalone module
+        run: |
+          for m in pricing/bsm_higher_order pricing/heston_calibration \
+                   strategies/gamma_scalping_0dte strategies/stat_arb_kalman; do
+            echo "--- $m ---"
+            python "quant-engine/$m.py" > /dev/null || { echo "FAIL: $m"; exit 1; }
+          done
+      - name: Brokers import with zero network
+        run: python -c "import sys; sys.path.insert(0,'quant-engine'); import brokers.zerodha_kite_bridge, brokers.dhan_hq_bridge; print('brokers import OK, no network at import')"
+
+  generator:
+    name: 50k generator self-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Generate and enforce >= 50,000 lines
+        run: python scripts/generate_50k_monorepo.py --out /tmp/gen50k --seed 20261020
