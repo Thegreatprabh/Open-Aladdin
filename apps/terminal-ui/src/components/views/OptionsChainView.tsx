@@ -24,7 +24,7 @@ const EXPIRIES = [
 const PRESETS: { name: string; legs: (c: OptionContract[], spot: number, step: number) => { strike: number; type: OptionType; dir: 1 | -1 }[] }[] = [
   {
     name: 'Long Straddle',
-    legs: (c, spot, step) => {
+    legs: (c, spot, _step) => {
       const atm = nearest(c, spot);
       return [
         { strike: atm, type: 'CE', dir: 1 },
@@ -62,7 +62,7 @@ const PRESETS: { name: string; legs: (c: OptionContract[], spot: number, step: n
   },
   {
     name: 'Bull Call Spread',
-    legs: (c, spot, step) => {
+    legs: (c, spot, _step) => {
       const k = strikesOf(c);
       const atm = nearest(c, spot);
       const up = k[k.indexOf(atm) + 2] ?? k[k.length - 1];

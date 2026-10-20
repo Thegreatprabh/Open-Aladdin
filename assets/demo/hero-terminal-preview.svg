@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="560" viewBox="0 0 1200 560" font-family="monospace">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0B0F17"/><stop offset="1" stop-color="#06080D"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F59E0B"/><stop offset="1" stop-color="#B45309"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="560" rx="14" fill="url(#bg)" stroke="#1E293B"/>
+  <!-- window chrome -->
+  <circle cx="28" cy="24" r="6" fill="#F43F5E"/><circle cx="48" cy="24" r="6" fill="#F59E0B"/><circle cx="68" cy="24" r="6" fill="#10B981"/>
+  <text x="100" y="30" font-size="16" fill="#F59E0B" font-weight="bold" letter-spacing="3">OPEN-ALADDIN</text>
+  <text x="100" y="50" font-size="11" fill="#64748B">INSTITUTIONAL QUANT TERMINAL · LIVE SIM</text>
+  <circle cx="1140" cy="30" r="6" fill="#10B981">
+    <animate attributeName="opacity" values="1;0.25;1" dur="1.4s" repeatCount="indefinite"/>
+  </circle>
+  <text x="1152" y="35" font-size="12" fill="#10B981" font-weight="bold">LIVE</text>
+  <!-- scrolling ticker tape -->
+  <g>
+    <clipPath id="tape"><rect x="0" y="14" width="1200" height="48"/></clipPath>
+    <g clip-path="url(#tape)">
+      <g>
+        <animateTransform attributeName="transform" type="translate" from="0 0" to="-1230 0" dur="18s" repeatCount="indefinite"/>
+        <text x="10" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">NIFTY 50</text><text x="10" y="52" font-size="12" fill="#10B981" font-family="monospace">24,318.60 +0.42%</text>
+      <text x="215" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">BANKNIFTY</text><text x="215" y="52" font-size="12" fill="#F43F5E" font-family="monospace">51,204.15 -0.18%</text>
+      <text x="420" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">INDIA VIX</text><text x="420" y="52" font-size="12" fill="#10B981" font-family="monospace">13.42 +2.10%</text>
+      <text x="625" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">SPX</text><text x="625" y="52" font-size="12" fill="#10B981" font-family="monospace">5,842.10 +0.31%</text>
+      <text x="830" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">USDINR</text><text x="830" y="52" font-size="12" fill="#F43F5E" font-family="monospace">83.94 -0.05%</text>
+      <text x="1035" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">GOLD</text><text x="1035" y="52" font-size="12" fill="#10B981" font-family="monospace">7,214.00 +0.67%</text>
+      <text x="1240" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">NIFTY 50</text><text x="1240" y="52" font-size="12" fill="#10B981" font-family="monospace">24,318.60 +0.42%</text>
+      <text x="1445" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">BANKNIFTY</text><text x="1445" y="52" font-size="12" fill="#F43F5E" font-family="monospace">51,204.15 -0.18%</text>
+      <text x="1650" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">INDIA VIX</text><text x="1650" y="52" font-size="12" fill="#10B981" font-family="monospace">13.42 +2.10%</text>
+      <text x="1855" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">SPX</text><text x="1855" y="52" font-size="12" fill="#10B981" font-family="monospace">5,842.10 +0.31%</text>
+      <text x="2060" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">USDINR</text><text x="2060" y="52" font-size="12" fill="#F43F5E" font-family="monospace">83.94 -0.05%</text>
+      <text x="2265" y="34" font-size="14" fill="#E5E7EB" font-family="monospace" font-weight="bold">GOLD</text><text x="2265" y="52" font-size="12" fill="#10B981" font-family="monospace">7,214.00 +0.67%</text>
+      </g>
+    </g>
+  </g>
+  <line x1="0" y1="70" x2="1200" y2="70" stroke="#1E293B"/>
+  <!-- candlestick chart (drifting) -->
+  <text x="40" y="100" font-size="13" fill="#06B6D4" font-weight="bold">NIFTY 50 · 1m</text>
+  <text x="40" y="118" font-size="11" fill="#64748B">VWAP · EMA20 · BOLLINGER</text>
+  <g>
+    <clipPath id="ch"><rect x="40" y="90" width="640" height="320"/></clipPath>
+    <g clip-path="url(#ch)">
+      <g>
+        <animateTransform attributeName="transform" type="translate" from="0 0" to="-64 0" dur="6s" repeatCount="indefinite"/>
+        <line x1="66.0" y1="311.2" x2="66.0" y2="330.3" stroke="#10B981" stroke-width="1.4"/><rect x="60.0" y="311.8" width="12" height="13.6" fill="#10B981" rx="1"/>
+      <line x1="82.0" y1="295.4" x2="82.0" y2="351.5" stroke="#F43F5E" stroke-width="1.4"/><rect x="76.0" y="311.8" width="12" height="25.8" fill="#F43F5E" rx="1"/>
+      <line x1="98.0" y1="299.6" x2="98.0" y2="345.8" stroke="#10B981" stroke-width="1.4"/><rect x="92.0" y="301.5" width="12" height="36.1" fill="#10B981" rx="1"/>
+      <line x1="114.0" y1="296.7" x2="114.0" y2="354.6" stroke="#F43F5E" stroke-width="1.4"/><rect x="108.0" y="301.5" width="12" height="43.1" fill="#F43F5E" rx="1"/>
+      <line x1="130.0" y1="339.0" x2="130.0" y2="400.0" stroke="#F43F5E" stroke-width="1.4"/><rect x="124.0" y="343.4" width="12" height="43.4" fill="#F43F5E" rx="1"/>
+      <line x1="146.0" y1="376.6" x2="146.0" y2="398.7" stroke="#10B981" stroke-width="1.4"/><rect x="140.0" y="381.5" width="12" height="5.2" fill="#10B981" rx="1"/>
+      <line x1="162.0" y1="353.8" x2="162.0" y2="399.5" stroke="#10B981" stroke-width="1.4"/><rect x="156.0" y="354.0" width="12" height="28.7" fill="#10B981" rx="1"/>
+      <line x1="178.0" y1="328.8" x2="178.0" y2="357.4" stroke="#10B981" stroke-width="1.4"/><rect x="172.0" y="336.3" width="12" height="18.8" fill="#10B981" rx="1"/>
+      <line x1="194.0" y1="288.1" x2="194.0" y2="338.4" stroke="#10B981" stroke-width="1.4"/><rect x="188.0" y="295.6" width="12" height="41.9" fill="#10B981" rx="1"/>
+      <line x1="210.0" y1="276.8" x2="210.0" y2="345.0" stroke="#F43F5E" stroke-width="1.4"/><rect x="204.0" y="295.6" width="12" height="37.1" fill="#F43F5E" rx="1"/>
+      <line x1="226.0" y1="288.0" x2="226.0" y2="343.5" stroke="#10B981" stroke-width="1.4"/><rect x="220.0" y="304.2" width="12" height="28.5" fill="#10B981" rx="1"/>
+      <line x1="242.0" y1="253.7" x2="242.0" y2="316.5" stroke="#10B981" stroke-width="1.4"/><rect x="236.0" y="262.1" width="12" height="43.3" fill="#10B981" rx="1"/>
+      <line x1="258.0" y1="219.0" x2="258.0" y2="281.3" stroke="#10B981" stroke-width="1.4"/><rect x="252.0" y="232.7" width="12" height="30.5" fill="#10B981" rx="1"/>
+      <line x1="274.0" y1="210.2" x2="274.0" y2="233.8" stroke="#10B981" stroke-width="1.4"/><rect x="268.0" y="225.9" width="12" height="8.1" fill="#10B981" rx="1"/>
+      <line x1="290.0" y1="219.4" x2="290.0" y2="251.9" stroke="#F43F5E" stroke-width="1.4"/><rect x="284.0" y="225.9" width="12" height="25.4" fill="#F43F5E" rx="1"/>
+      <line x1="306.0" y1="247.8" x2="306.0" y2="280.1" stroke="#F43F5E" stroke-width="1.4"/><rect x="300.0" y="250.1" width="12" height="25.0" fill="#F43F5E" rx="1"/>
+      <line x1="322.0" y1="253.7" x2="322.0" y2="282.1" stroke="#10B981" stroke-width="1.4"/><rect x="316.0" y="261.8" width="12" height="13.3" fill="#10B981" rx="1"/>
+      <line x1="338.0" y1="255.9" x2="338.0" y2="308.5" stroke="#F43F5E" stroke-width="1.4"/><rect x="332.0" y="261.8" width="12" height="27.1" fill="#F43F5E" rx="1"/>
+      <line x1="354.0" y1="260.9" x2="354.0" y2="291.5" stroke="#10B981" stroke-width="1.4"/><rect x="348.0" y="274.5" width="12" height="14.4" fill="#10B981" rx="1"/>
+      <line x1="370.0" y1="250.4" x2="370.0" y2="282.9" stroke="#10B981" stroke-width="1.4"/><rect x="364.0" y="254.1" width="12" height="21.6" fill="#10B981" rx="1"/>
+      <line x1="386.0" y1="196.3" x2="386.0" y2="266.5" stroke="#10B981" stroke-width="1.4"/><rect x="380.0" y="210.5" width="12" height="44.8" fill="#10B981" rx="1"/>
+      <line x1="402.0" y1="175.3" x2="402.0" y2="227.8" stroke="#10B981" stroke-width="1.4"/><rect x="396.0" y="194.1" width="12" height="17.6" fill="#10B981" rx="1"/>
+      <line x1="418.0" y1="193.3" x2="418.0" y2="225.2" stroke="#F43F5E" stroke-width="1.4"/><rect x="412.0" y="194.1" width="12" height="25.3" fill="#F43F5E" rx="1"/>
+      <line x1="434.0" y1="213.5" x2="434.0" y2="259.8" stroke="#F43F5E" stroke-width="1.4"/><rect x="428.0" y="218.2" width="12" height="21.9" fill="#F43F5E" rx="1"/>
+      <line x1="450.0" y1="198.3" x2="450.0" y2="253.5" stroke="#10B981" stroke-width="1.4"/><rect x="444.0" y="205.4" width="12" height="34.7" fill="#10B981" rx="1"/>
+      <line x1="466.0" y1="185.0" x2="466.0" y2="224.9" stroke="#F43F5E" stroke-width="1.4"/><rect x="460.0" y="205.4" width="12" height="10.5" fill="#F43F5E" rx="1"/>
+      <line x1="482.0" y1="209.2" x2="482.0" y2="248.1" stroke="#F43F5E" stroke-width="1.4"/><rect x="476.0" y="214.6" width="12" height="22.1" fill="#F43F5E" rx="1"/>
+      <line x1="498.0" y1="222.6" x2="498.0" y2="276.7" stroke="#F43F5E" stroke-width="1.4"/><rect x="492.0" y="235.6" width="12" height="22.3" fill="#F43F5E" rx="1"/>
+      <line x1="514.0" y1="251.8" x2="514.0" y2="287.9" stroke="#F43F5E" stroke-width="1.4"/><rect x="508.0" y="256.7" width="12" height="10.2" fill="#F43F5E" rx="1"/>
+      <line x1="530.0" y1="262.8" x2="530.0" y2="266.7" stroke="#10B981" stroke-width="1.4"/><rect x="524.0" y="264.8" width="12" height="2.0" fill="#10B981" rx="1"/>
+      <line x1="546.0" y1="250.8" x2="546.0" y2="317.2" stroke="#F43F5E" stroke-width="1.4"/><rect x="540.0" y="264.8" width="12" height="36.0" fill="#F43F5E" rx="1"/>
+      <line x1="562.0" y1="298.2" x2="562.0" y2="315.0" stroke="#F43F5E" stroke-width="1.4"/><rect x="556.0" y="299.6" width="12" height="8.1" fill="#F43F5E" rx="1"/>
+      <line x1="578.0" y1="250.5" x2="578.0" y2="328.1" stroke="#10B981" stroke-width="1.4"/><rect x="572.0" y="262.3" width="12" height="45.4" fill="#10B981" rx="1"/>
+      <line x1="594.0" y1="229.9" x2="594.0" y2="278.4" stroke="#10B981" stroke-width="1.4"/><rect x="588.0" y="230.2" width="12" height="33.3" fill="#10B981" rx="1"/>
+      <line x1="610.0" y1="202.1" x2="610.0" y2="236.1" stroke="#10B981" stroke-width="1.4"/><rect x="604.0" y="214.0" width="12" height="17.4" fill="#10B981" rx="1"/>
+      <line x1="626.0" y1="199.0" x2="626.0" y2="223.7" stroke="#10B981" stroke-width="1.4"/><rect x="620.0" y="201.5" width="12" height="13.8" fill="#10B981" rx="1"/>
+      <line x1="642.0" y1="180.2" x2="642.0" y2="225.1" stroke="#F43F5E" stroke-width="1.4"/><rect x="636.0" y="201.5" width="12" height="5.3" fill="#F43F5E" rx="1"/>
+      <line x1="658.0" y1="194.5" x2="658.0" y2="230.6" stroke="#F43F5E" stroke-width="1.4"/><rect x="652.0" y="205.6" width="12" height="22.3" fill="#F43F5E" rx="1"/>
+      <line x1="674.0" y1="170.5" x2="674.0" y2="233.3" stroke="#10B981" stroke-width="1.4"/><rect x="668.0" y="189.9" width="12" height="37.9" fill="#10B981" rx="1"/>
+      <line x1="690.0" y1="164.0" x2="690.0" y2="193.3" stroke="#10B981" stroke-width="1.4"/><rect x="684.0" y="177.6" width="12" height="13.6" fill="#10B981" rx="1"/>
+      <line x1="706.0" y1="142.2" x2="706.0" y2="194.9" stroke="#10B981" stroke-width="1.4"/><rect x="700.0" y="154.2" width="12" height="24.6" fill="#10B981" rx="1"/>
+      <line x1="722.0" y1="151.5" x2="722.0" y2="161.4" stroke="#10B981" stroke-width="1.4"/><rect x="716.0" y="151.5" width="12" height="3.9" fill="#10B981" rx="1"/>
+      <line x1="738.0" y1="130.8" x2="738.0" y2="213.8" stroke="#F43F5E" stroke-width="1.4"/><rect x="732.0" y="151.5" width="12" height="44.0" fill="#F43F5E" rx="1"/>
+      <line x1="754.0" y1="157.9" x2="754.0" y2="195.6" stroke="#10B981" stroke-width="1.4"/><rect x="748.0" y="164.7" width="12" height="30.7" fill="#10B981" rx="1"/>
+      <line x1="770.0" y1="110.0" x2="770.0" y2="166.6" stroke="#10B981" stroke-width="1.4"/><rect x="764.0" y="131.1" width="12" height="34.9" fill="#10B981" rx="1"/>
+      <line x1="786.0" y1="129.5" x2="786.0" y2="149.3" stroke="#F43F5E" stroke-width="1.4"/><rect x="780.0" y="131.1" width="12" height="2.4" fill="#F43F5E" rx="1"/>
+      </g>
+    </g>
+  </g>
+  <!-- GEX column -->
+  <text x="820" y="100" font-size="13" fill="#06B6D4" font-weight="bold">DEALER GEX (₹ Cr)</text>
+  <text x="820" y="118" font-size="11" fill="#64748B">ZERO-GAMMA FLIP: <tspan fill="#F59E0B">24,250</tspan></text>
+  <rect x="830" y="308.8" width="44" height="91.2" rx="3" fill="#06B6D4" opacity="0.85"><animate attributeName="height" values="91.2;74.78399999999999;91.2" dur="2.2s" repeatCount="indefinite"/><animate attributeName="y" values="308.8;325.216;308.8" dur="2.2s" repeatCount="indefinite"/></rect><text x="852" y="422" text-anchor="middle" font-size="11" fill="#64748B" font-family="monospace">23.8K</text>
+      <rect x="892" y="227.20000000000002" width="44" height="172.79999999999998" rx="3" fill="#06B6D4" opacity="0.85"><animate attributeName="height" values="172.79999999999998;141.69599999999997;172.79999999999998" dur="2.5500000000000003s" repeatCount="indefinite"/><animate attributeName="y" values="227.20000000000002;258.30400000000003;227.20000000000002" dur="2.5500000000000003s" repeatCount="indefinite"/></rect><text x="914" y="422" text-anchor="middle" font-size="11" fill="#64748B" font-family="monospace">24.0K</text>
+      <rect x="954" y="116.80000000000001" width="44" height="283.2" rx="3" fill="#06B6D4" opacity="0.85"><animate attributeName="height" values="283.2;232.224;283.2" dur="2.9000000000000004s" repeatCount="indefinite"/><animate attributeName="y" values="116.80000000000001;167.776;116.80000000000001" dur="2.9000000000000004s" repeatCount="indefinite"/></rect><text x="976" y="422" text-anchor="middle" font-size="11" fill="#64748B" font-family="monospace">24.2K</text>
+      <rect x="1016" y="198.4" width="44" height="201.6" rx="3" fill="#06B6D4" opacity="0.85"><animate attributeName="height" values="201.6;165.31199999999998;201.6" dur="3.25s" repeatCount="indefinite"/><animate attributeName="y" values="198.4;234.68800000000002;198.4" dur="3.25s" repeatCount="indefinite"/></rect><text x="1038" y="422" text-anchor="middle" font-size="11" fill="#64748B" font-family="monospace">24.4K</text>
+      <rect x="1078" y="289.6" width="44" height="110.39999999999999" rx="3" fill="#06B6D4" opacity="0.85"><animate attributeName="height" values="110.39999999999999;90.52799999999999;110.39999999999999" dur="3.6s" repeatCount="indefinite"/><animate attributeName="y" values="289.6;309.472;289.6" dur="3.6s" repeatCount="indefinite"/></rect><text x="1100" y="422" text-anchor="middle" font-size="11" fill="#64748B" font-family="monospace">24.6K</text>
+  <rect x="826" y="396" width="268" height="3" fill="url(#bar)"/>
+  <!-- status strip -->
+  <g font-size="11">
+    <rect x="40" y="452" width="150" height="26" rx="4" fill="#111827" stroke="#1E293B"/>
+    <text x="52" y="469" fill="#94A3B8">MTM <tspan fill="#10B981" font-weight="bold">+₹48,210</tspan></text>
+    <rect x="200" y="452" width="170" height="26" rx="4" fill="#111827" stroke="#1E293B"/>
+    <text x="212" y="469" fill="#94A3B8">NET Δ <tspan fill="#F59E0B" font-weight="bold">+128.4</tspan></text>
+    <rect x="380" y="452" width="180" height="26" rx="4" fill="#111827" stroke="#1E293B"/>
+    <text x="392" y="469" fill="#94A3B8">MARGIN <tspan fill="#E5E7EB" font-weight="bold">₹1.41L</tspan></text>
+    <rect x="570" y="452" width="200" height="26" rx="4" fill="#F59E0B"/>
+    <text x="586" y="469" fill="#06080D" font-weight="bold">PAPER · ₹1.00 Cr</text>
+  </g>
+  <!-- view cycler -->
+  <g font-size="12" font-weight="bold">
+    <text x="40" y="516" fill="#64748B">VIEWS:</text>
+    <text x="110" y="516" fill="#06B6D4">COMMAND DECK<tspan dx="14" fill="#475569">·</tspan>
+      <animate attributeName="opacity" values="1;1;0.25;0.25" keyTimes="0;0.25;0.3;1" dur="12s" repeatCount="indefinite"/></text>
+    <text x="300" y="516" fill="#06B6D4">3D GEX SURFACE<tspan dx="14" fill="#475569">·</tspan>
+      <animate attributeName="opacity" values="0.25;0.25;1;1;0.25" keyTimes="0;0.25;0.3;0.5;0.55" dur="12s" repeatCount="indefinite"/></text>
+    <text x="490" y="516" fill="#06B6D4">OPTIONS CHAIN<tspan dx="14" fill="#475569">·</tspan>
+      <animate attributeName="opacity" values="0.25;0.25;0.25;1;1;0.25" keyTimes="0;0.5;0.55;0.75;0.8;1" dur="12s" repeatCount="indefinite"/></text>
+    <text x="680" y="516" fill="#06B6D4">BACKTESTER
+      <animate attributeName="opacity" values="0.25;0.25;0.25;0.25;1;1" keyTimes="0;0.75;0.8;1" dur="12s" repeatCount="indefinite"/></text>
+  </g>
+</svg>

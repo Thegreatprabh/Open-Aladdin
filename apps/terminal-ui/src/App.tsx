@@ -154,8 +154,7 @@ export default function App() {
       const orderDir: 1 | -1 = o.side === 'BUY' ? 1 : -1;
       const existingDir = existing ? (existing.side === 'LONG' ? 1 : -1) : 0;
 
-      // Margin: SPAN + exposure proxy — options 12% + 3% of notional, equity 20%.
-      const notional = fill * o.qty * lot;
+      // Margin: SPAN + exposure proxy — options 15%, equity 20%.
       const marginRate = o.instrumentType === 'OPTION' ? 0.15 : 0.2;
       const sameDirection = !existing || existingDir === orderDir;
       const closingQty = existing && !sameDirection ? Math.min(o.qty, existing.qty) : 0;

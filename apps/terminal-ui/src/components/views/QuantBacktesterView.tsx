@@ -14,7 +14,7 @@ import type { BacktestResult } from '../../types/market';
 import { fmt, fmtPct } from '../../lib/format';
 
 function useLineChart(
-  ref: React.RefObject<HTMLCanvasElement>,
+  _ref: React.RefObject<HTMLCanvasElement>,
   series: number[][],
   opts: { colors: string[]; fill?: boolean; min?: number; max?: number },
 ) {
@@ -32,7 +32,7 @@ export default function QuantBacktesterView() {
   const [showMC, setShowMC] = useState(true);
   const eqRef = useRef<HTMLCanvasElement>(null);
   const ddRef = useRef<HTMLCanvasElement>(null);
-  const chartKey = useLineChart(eqRef, result ? [result.equityCurve] : [], {});
+  const chartKey = useLineChart(eqRef, result ? [result.equityCurve] : [], { colors: ['#06B6D4'] });
 
   const stratMeta = useMemo(() => STRATEGIES.find((s) => s.id === strategy)!, [strategy]);
 
