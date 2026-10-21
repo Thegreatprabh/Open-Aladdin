@@ -1,7 +1,11 @@
 # Live Market Data Pipeline — Design (AR-1)
 
-Status: **designed, not yet implemented.** The terminal today consumes only its
-in-browser simulator. This document specifies the backend streaming system that
+Status: **P1 implemented (2026-10-21)** — ingestion + normalizer + bus +
+WebSocket fan-out against a simulated/recorded upstream, 42 tests, Compose
+service `market-data` (see `services/market-data/`). The terminal still
+consumes only its in-browser simulator until P2 lands the frontend
+`LiveProvider`; P3 (real KiteTicker) and P4 (Dhan parity, entitlements)
+remain pending. This document specifies the backend streaming system that
 replaces the simulator as the data source, what already exists to build on, and
 the phased rollout. Nothing here is claimed as built until the corresponding
 phase lands with tests.
@@ -131,7 +135,7 @@ aggregate sim ticks the same way), keeping the server stateless per viewer.
 
 | Phase | Deliverable | Needs |
 |---|---|---|
-| P1 | Ingestion + normalizer + fan-out, verified end-to-end against recorded/simulated upstream; Compose service `market-data` | Nothing external |
+| P1 | ✅ **Landed 2026-10-21** — ingestion + normalizer + fan-out, verified end-to-end against recorded/simulated upstream; Compose service `market-data`; 42 tests | Nothing external |
 | P2 | Frontend `LiveProvider` + mode switch behind `VITE_MARKET_DATA_WS`; LIVE badge path live in the UI against the P1 service | P1 |
 | P3 | Real KiteTicker upstream in the operator's deployment | Broker API subscription + credentials, daily token flow (account holder) |
 | P4 | Dhan feed parity; per-user data entitlements | AR-2 account service |

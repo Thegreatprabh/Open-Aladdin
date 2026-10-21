@@ -461,7 +461,7 @@ variables — never commit keys to the repo. Nothing in this project places real
 - **Wire the Rust engine into the terminal** (WASM build or a Node sidecar) so paper orders match on the real LOB
   instead of the TypeScript simulator. This is the known gap — until it lands, call the Rust core a tested library,
   not a hot path.
-- Live WebSocket ingestion from broker market-data APIs (Kite Connect, DhanHQ) — design ready in [docs/LIVE_DATA_PIPELINE.md](docs/LIVE_DATA_PIPELINE.md) (ingestion → normalizer → Redis → fan-out → LiveProvider, P1–P4 rollout); implementation pending.
+- Live WebSocket ingestion from broker market-data APIs (Kite Connect, DhanHQ) — design in [docs/LIVE_DATA_PIPELINE.md](docs/LIVE_DATA_PIPELINE.md) (ingestion → normalizer → Redis → fan-out → LiveProvider, P1–P4 rollout). **P1 implemented:** the backend pipeline in `services/market-data/` runs end-to-end against a simulated/recorded upstream (42 tests, Compose service `market-data`); P2 (frontend LiveProvider), P3 (real KiteTicker, needs broker credentials) and P4 are pending.
 - Exchange calendar and corporate-action adjustments in the backtester.
 - More awesome-list entries and a hosted demo link.
 

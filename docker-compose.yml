@@ -6,6 +6,7 @@
 #   terminal-ui      React/Vite terminal            -> http://localhost:5173
 #   matching-engine  Rust FIX 4.4 gateway + LOB     -> tcp  localhost:9101
 #   quant-engine     Python quant / pricing API     -> http://localhost:9102
+#   market-data      AR-1 live data pipeline (WS)   -> ws://localhost:9103
 #   redis            Order/quote state cache        -> internal network only
 #   timescaledb      Tick & trade persistence       -> internal network only
 #
@@ -59,6 +60,26 @@ services:
       - "9102:9102"
     depends_on:
       - timescaledb
+    networks:
+      - atlas-net
+
+  market-data:
+    build:
+      context: ./services/market-data
+      dockerfile: Dockerfile
+    ports:
+      # Loopback only, same posture as the FIX gateway: the fan-out is an
+      # internal endpoint until AR-2 provides per-user auth.
+      - "127.0.0.1:9103:9103"
+    environment:
+      MD_REDIS_URL: "redis://redis:6379/0"
+      # P1 runs against the simulated upstream (events stamped SIMULATED).
+      # P3 supplies the real KiteTicker adapter + broker credentials via
+      # .env — never committed, never shipped to the browser.
+      MD_UPSTREAM: "${MD_UPSTREAM:-sim}"
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - atlas-net
 

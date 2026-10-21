@@ -119,3 +119,41 @@ Baseline re-verified 2026-10-20 before changes: CI run #30 all-green on main
   daily-token and instrument-mapping operations, chaos/contract testing, and
   a P1–P4 rollout. Implementation is not claimed; P1 needs nothing external,
   P3 needs the account holder's broker API subscription and credentials.
+
+## Round 6 — AR-1 phase P1: live data pipeline implemented (2026-10-21)
+
+- **AR-1 (P1) — ingestion + normalizer + bus + WebSocket fan-out LANDED** in
+  `services/market-data/` (Python/asyncio), built exactly to
+  `docs/LIVE_DATA_PIPELINE.md`. Pieces: canonical event schema as executable
+  contract (`schema.validate_event`, pinned by tests using the design doc's
+  own example events); instrument registry (symbol ↔ token, dump-loader
+  interface for P3); normalizer (token resolution, per-symbol `seq` across
+  tick+depth, IST `exchangeTs`, duplicate/stale/malformed drops — all
+  counted, never silent); upstreams `SimulatedUpstream` (seeded, deterministic)
+  and `RecordedUpstream` (JSONL fixture replay); bus interface with
+  `RedisBus` (pub/sub per symbol + snapshot keys) and `InMemoryBus`;
+  fan-out WebSocket server (subscribe/unsubscribe/snapshot-resync, snapshot
+  before live, 5 s heartbeat, status broadcast to all clients); service
+  supervision (upstream error → RECONNECTING + restart, silence →
+  STALE watchdog, first frame after stale → CONNECTED). Compose service
+  `market-data` added (loopback :9103, Redis bus, `MD_UPSTREAM=sim`).
+- **Provenance honesty enforced in code:** P1 events are stamped
+  `source: "SIMULATED"` by the normalizer from the upstream adapter;
+  `"LIVE"` becomes possible only with the P3 KiteTicker adapter. The
+  terminal UI does not consume the service yet (that is P2).
+- **Verification:** 42/42 tests green (schema contract, instruments,
+  normalizer, both buses against one contract, fan-out over a real socket,
+  two-client E2E, recorded replay, chaos lifecycle
+  expiry→STALE→resume, garbage-injection). Live smoke run of
+  `python -m market_data`: client subscribed and received canonical
+  ticks/depth. A test caught a real contract subtlety during the build —
+  `seq` spans tick+depth per symbol (per the design doc's own examples),
+  not per event type; the test was corrected to the document.
+- **Disclosed, not verified in this environment:** no Redis server exists
+  here (RedisBus is covered by fakeredis contract tests implementing the
+  same wire semantics) and no Docker daemon exists here (the Compose file
+  is YAML-validated and the service runs natively; `docker compose up` is
+  the operator's check). Still open: P2 frontend `LiveProvider`, P3 real
+  KiteTicker (account holder's subscription + credentials + daily token
+  flow), P4 Dhan parity + AR-2 entitlements. AR-2 (per-user accounts) and
+  AR-3 (broker sandbox) are unchanged.
